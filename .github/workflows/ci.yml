@@ -1,0 +1,54 @@
+name: Verify
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LEPTOS_OUTPUT_NAME: mdpdf-app
+      LEPTOS_SITE_ROOT: target/site
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/mdpdf-browsers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: npm ci --ignore-scripts && npm run vendor && npx playwright install --with-deps chromium
+      - run: |
+          node -e 'console.log("CHROME_PATH="+require("playwright").chromium.executablePath())' >> "$GITHUB_ENV"
+      - run: cargo install cargo-leptos --version 0.3.6 --locked
+      - run: cargo fmt --check && cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked && cargo check -p mdpdf-core --target wasm32-unknown-unknown --locked
+      - run: node --test crates/mdpdf-core/tests/bootstrap.test.cjs && python3 scripts/check_assets.py && node scripts/check_browser.cjs
+      - run: cargo leptos build && cargo build -p mdpdf-cli --locked
+      - run: cargo test --workspace --locked -- --ignored --nocapture
+      - run: npm run test:e2e
+      - run: |
+          bash scripts/e2e-server.sh > /tmp/mdpdf-server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/healthz && break || sleep 1; done
+          node scripts/verify_delivery.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-and-pdf-results
+          path: |
+            test-results
+            target/verification
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mdpdf .
+      - run: |
+          docker run -d --name mdpdf -p 3000:3000 --shm-size=1g mdpdf
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/healthz && exit 0 || sleep 1; done
+          docker logs mdpdf
+          exit 1

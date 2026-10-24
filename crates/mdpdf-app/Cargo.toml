@@ -1,0 +1,63 @@
+[package]
+name = "mdpdf-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos.workspace = true
+leptos_meta.workspace = true
+mdpdf-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true }
+mdpdf-render = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+leptos_axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+
+[features]
+default = ["ssr"]
+ssr = ["leptos/ssr", "leptos_meta/ssr", "dep:mdpdf-render", "dep:axum", "dep:leptos_axum", "dep:tokio", "dep:tower-http", "dep:base64", "dep:getrandom", "dep:sha2"]
+hydrate = ["leptos/hydrate", "dep:wasm-bindgen", "dep:js-sys", "dep:web-sys"]
+
+[dev-dependencies]
+reqwest = { workspace = true, features = ["json", "multipart"] }
+tempfile.workspace = true
+lopdf.workspace = true
+
+[[bin]]
+name = "mdpdf-app"
+path = "src/main.rs"
+required-features = ["ssr"]
+
+[package.metadata.leptos]
+output-name = "mdpdf-app"
+disable-erase-components = true
+site-root = "target/site"
+site-pkg-dir = "pkg"
+assets-dir = "../../public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-dev = "wasm-release"
+lib-profile-release = "wasm-release"
+end2end-cmd = "npm run test:e2e"
+end2end-dir = "../.."
+
+[lints]
+workspace = true

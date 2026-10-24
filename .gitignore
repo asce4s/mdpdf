@@ -1,0 +1,18 @@
+/target/
+/node_modules/
+*.snap.new
+*.pdf
+/site/
+
+/public/fonts/
+/public/vendor/
+/test-results/
+/playwright-report/
+
+/.playwright-mcp/
+
+# Local input documents and machine-specific configuration.
+/markdown/
+/.aws/
+/.codex/
+/.agents/

@@ -1,0 +1,4 @@
+[env]
+LEPTOS_OUTPUT_NAME = "mdpdf-app"
+LEPTOS_SITE_ROOT = "target/site"
+LEPTOS_SITE_PKG_DIR = "pkg"

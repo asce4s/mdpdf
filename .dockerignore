@@ -1,0 +1,11 @@
+target
+node_modules
+.git
+.codex
+.agents
+.aws
+.playwright-mcp
+test-results
+playwright-report
+public/fonts
+public/vendor

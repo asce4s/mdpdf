@@ -1,0 +1,12 @@
+name = "GitHub"
+[typography]
+body_font = "IBM Plex Sans"
+base_size = 11.0
+[tables]
+style = "grid"
+[headings]
+levels = [
+  { size = 24.0, bottom_border = "#d0d7de" },
+  { size = 20.0, bottom_border = "#d0d7de" },
+  { size = 16.0 }, { size = 14.0 }, { size = 12.0 }, { size = 11.0 }
+]

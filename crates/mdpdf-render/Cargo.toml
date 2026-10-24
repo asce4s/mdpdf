@@ -1,0 +1,26 @@
+[package]
+name = "mdpdf-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+mdpdf-core.workspace = true
+chromiumoxide.workspace = true
+lopdf.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+comrak.workspace = true
+
+syntect = { workspace = true, features = ["plist-load"] }
+
+[lints]
+workspace = true

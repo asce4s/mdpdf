@@ -1,0 +1,12 @@
+name = "Academic"
+[typography]
+body_font = "Source Serif 4"
+heading_font = "Source Serif 4"
+text_align = "justify"
+hyphenation = true
+[page]
+heading_numbers = true
+[tables]
+style = "grid"
+[header_footer.footer]
+center = "Page {page} of {pages}"

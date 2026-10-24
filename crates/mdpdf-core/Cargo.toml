@@ -1,0 +1,22 @@
+[package]
+name = "mdpdf-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+comrak.workspace = true
+ammonia.workspace = true
+syntect.workspace = true
+serde-saphyr.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+syntect = { workspace = true, features = ["plist-load"] }
+
+[lints]
+workspace = true

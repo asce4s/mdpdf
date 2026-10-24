@@ -1,0 +1,16 @@
+name = "Corporate"
+[typography]
+body_font = "IBM Plex Sans"
+heading_font = "IBM Plex Sans"
+link_color = "#175cd3"
+[tables]
+header_bg = "#175cd3"
+header_color = "#ffffff"
+[header_footer]
+hide_on_first_page = true
+[header_footer.header]
+left = "{title}"
+right = "{author}"
+[header_footer.footer]
+left = "{date}"
+right = "Page {page} of {pages}"

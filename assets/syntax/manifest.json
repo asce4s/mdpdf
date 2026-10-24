@@ -1,0 +1,77 @@
+[
+  {
+    "name": "github-light",
+    "repository": "Colorsublime/Colorsublime-Themes",
+    "revision": "56b1b09c4d63c61a9fbfdd4eeb517c023497b64c",
+    "files": {
+      "github-light.tmTheme": {
+        "url": "https://raw.githubusercontent.com/Colorsublime/Colorsublime-Themes/56b1b09c4d63c61a9fbfdd4eeb517c023497b64c/themes/GitHub_Light.tmTheme",
+        "sha256": "f23299945c92bd2d9cc92afaa71539c92aa8a511956caa24e34ac2900f3c396a"
+      },
+      "github-light.LICENSE": {
+        "url": "https://raw.githubusercontent.com/Colorsublime/Colorsublime-Themes/56b1b09c4d63c61a9fbfdd4eeb517c023497b64c/LICENSE",
+        "sha256": "3e5ef6e8cc5274b5c394738bc6a09b47ddf5b9ad1e2b625cf53677c5014c1e65"
+      }
+    }
+  },
+  {
+    "name": "one-dark",
+    "repository": "andresmichel/one-dark-theme",
+    "revision": "9ecab1531c983680897b9a77190262561ce4fe0e",
+    "files": {
+      "one-dark.tmTheme": {
+        "url": "https://raw.githubusercontent.com/andresmichel/one-dark-theme/9ecab1531c983680897b9a77190262561ce4fe0e/One%20Dark.tmTheme",
+        "sha256": "1543e8b3f3112c77c068a45e092f1fcb9d50eedf1b42ce67932784858ad665be"
+      },
+      "one-dark.LICENSE": {
+        "url": "https://raw.githubusercontent.com/andresmichel/one-dark-theme/9ecab1531c983680897b9a77190262561ce4fe0e/LICENSE",
+        "sha256": "2eda8adfc8cebf9bb11154724727b6b9c9bb989b3bc7414bdd66fe4dea19998f"
+      }
+    }
+  },
+  {
+    "name": "solarized-light",
+    "repository": "altercation/solarized",
+    "revision": "62f656a02f93c5190a8753159e34b385588d5ff3",
+    "files": {
+      "solarized-light.tmTheme": {
+        "url": "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/textmate-colors-solarized/Solarized%20%28light%29.tmTheme",
+        "sha256": "3dd2be60da4d8ac8ecf9d97e7dc2b61f20d740c9034707893fa8fbf9aed11948"
+      },
+      "solarized-light.LICENSE": {
+        "url": "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE",
+        "sha256": "494aefdabf86acce06bd63001ad8aedad4ee38da23509d3f917d95aa3368b9a6"
+      }
+    }
+  },
+  {
+    "name": "solarized-dark",
+    "repository": "altercation/solarized",
+    "revision": "62f656a02f93c5190a8753159e34b385588d5ff3",
+    "files": {
+      "solarized-dark.tmTheme": {
+        "url": "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/textmate-colors-solarized/Solarized%20%28dark%29.tmTheme",
+        "sha256": "26f22ea7761b141221473fe166d662a5589b9a14558d6a8e1d652a5630fd0b84"
+      },
+      "solarized-dark.LICENSE": {
+        "url": "https://raw.githubusercontent.com/altercation/solarized/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE",
+        "sha256": "494aefdabf86acce06bd63001ad8aedad4ee38da23509d3f917d95aa3368b9a6"
+      }
+    }
+  },
+  {
+    "name": "nord",
+    "repository": "arcticicestudio/nord-sublime-text",
+    "revision": "91eae63dc83ed501aa133d8f3266c301ab0cbf68",
+    "files": {
+      "nord.sublime-color-scheme": {
+        "url": "https://raw.githubusercontent.com/arcticicestudio/nord-sublime-text/91eae63dc83ed501aa133d8f3266c301ab0cbf68/Nord.sublime-color-scheme",
+        "sha256": "aea697727268117f119f7f54d556d018b08251d1113a4f61035043f1eaf8bed2"
+      },
+      "nord.LICENSE": {
+        "url": "https://raw.githubusercontent.com/arcticicestudio/nord-sublime-text/91eae63dc83ed501aa133d8f3266c301ab0cbf68/license",
+        "sha256": "25ac8188d670bd2ad2ce2f4f55ab88573010ee9f7a4502543cb1eea1e2274f8a"
+      }
+    }
+  }
+]

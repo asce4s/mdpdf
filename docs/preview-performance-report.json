@@ -1,0 +1,190 @@
+{
+  "source": "markdown",
+  "testedAt": "2026-10-24T02:27:02.820Z",
+  "results": [
+    {
+      "file": "Untitled.md",
+      "bytes": 108149,
+      "dropToReadyMs": 933,
+      "dropToContentMs": 456,
+      "contentUpdateMs": 420,
+      "renderMs": 853,
+      "previewRequests": 1,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "crawler-project-context.md",
+      "bytes": 5120,
+      "dropToReadyMs": 41,
+      "dropToContentMs": 30,
+      "contentUpdateMs": 23,
+      "renderMs": 23,
+      "previewRequests": 0,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-db-design.md",
+      "bytes": 137214,
+      "dropToReadyMs": 5001,
+      "dropToContentMs": 501,
+      "contentUpdateMs": 467,
+      "renderMs": 4943,
+      "previewRequests": 1,
+      "diagrams": 8,
+      "renderedDiagrams": 8,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-deployment.md",
+      "bytes": 45047,
+      "dropToReadyMs": 427,
+      "dropToContentMs": 193,
+      "contentUpdateMs": 171,
+      "renderMs": 387,
+      "previewRequests": 1,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-high-level-design.md",
+      "bytes": 40906,
+      "dropToReadyMs": 596,
+      "dropToContentMs": 59,
+      "contentUpdateMs": 46,
+      "renderMs": 574,
+      "previewRequests": 0,
+      "diagrams": 6,
+      "renderedDiagrams": 6,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-logical-data-model.md",
+      "bytes": 64552,
+      "dropToReadyMs": 970,
+      "dropToContentMs": 192,
+      "contentUpdateMs": 178,
+      "renderMs": 943,
+      "previewRequests": 1,
+      "diagrams": 3,
+      "renderedDiagrams": 3,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-low-level-design.md",
+      "bytes": 90596,
+      "dropToReadyMs": 909,
+      "dropToContentMs": 198,
+      "contentUpdateMs": 179,
+      "renderMs": 874,
+      "previewRequests": 1,
+      "diagrams": 2,
+      "renderedDiagrams": 2,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-requirements.md",
+      "bytes": 47073,
+      "dropToReadyMs": 412,
+      "dropToContentMs": 74,
+      "contentUpdateMs": 60,
+      "renderMs": 387,
+      "previewRequests": 1,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    }
+  ],
+  "method": {
+    "timings": "One Chromium run after initial app readiness. Each sample is dropped onto CodeMirror. dropToContentMs measures drop dispatch to the first content message after DOM replacement; it is not a browser paint measurement. dropToReadyMs includes fonts and all diagrams. Samples run sequentially with a retained font/SVG cache.",
+    "baseline": "Earlier native renderer and iframe bridge, with a client route override selecting the former full-iframe reload path and 300 ms debounce. Baseline files were opened through the file input. Baseline records complete readiness only; initial text availability was not instrumented.",
+    "scroll": "120 position-line messages after layout settles; ordinary scrolling should reuse the geometry index."
+  },
+  "legacyFullReadiness": [
+    {
+      "name": "Untitled.md",
+      "bytes": 108149,
+      "fileToReadyMs": 2137,
+      "diagrams": 0,
+      "svg": 0,
+      "errors": []
+    },
+    {
+      "name": "crawler-project-context.md",
+      "bytes": 5120,
+      "fileToReadyMs": 1539,
+      "diagrams": 0,
+      "svg": 0,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-db-design.md",
+      "bytes": 137214,
+      "fileToReadyMs": 5587,
+      "diagrams": 8,
+      "svg": 8,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-deployment.md",
+      "bytes": 45047,
+      "fileToReadyMs": 2219,
+      "diagrams": 0,
+      "svg": 0,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-high-level-design.md",
+      "bytes": 40906,
+      "fileToReadyMs": 2168,
+      "diagrams": 6,
+      "svg": 6,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-logical-data-model.md",
+      "bytes": 64552,
+      "fileToReadyMs": 2464,
+      "diagrams": 3,
+      "svg": 3,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-low-level-design.md",
+      "bytes": 90596,
+      "fileToReadyMs": 2651,
+      "diagrams": 2,
+      "svg": 2,
+      "errors": []
+    },
+    {
+      "name": "web-crawler-requirements.md",
+      "bytes": 47073,
+      "fileToReadyMs": 2098,
+      "diagrams": 0,
+      "svg": 0,
+      "errors": []
+    }
+  ],
+  "verification": {
+    "ordinaryRustTests": 39,
+    "chromiumIntegrationSuites": 4,
+    "browserTests": 16,
+    "pdfFixtures": 15,
+    "visualBaselines": 16,
+    "hostedCiVerified": false,
+    "containerRebuiltForThisChange": false
+  }
+}

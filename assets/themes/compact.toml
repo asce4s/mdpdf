@@ -1,0 +1,13 @@
+name = "Compact"
+[typography]
+base_size = 10.0
+line_height = 1.2
+paragraph_spacing = 0.4
+[page.margins]
+top = 12.0
+right = 12.0
+bottom = 12.0
+left = 12.0
+[tables]
+cell_padding_vertical = 3.0
+cell_padding_horizontal = 6.0

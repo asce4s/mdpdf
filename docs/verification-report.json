@@ -1,0 +1,159 @@
+{
+  "fixtures": [
+    {
+      "fixture": "admonitions",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "basic",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "code",
+      "pages": 2,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "fonts-cjk",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "frontmatter-overrides",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "gfm-tables",
+      "pages": 8,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "images",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "math-cover",
+      "pages": 2,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        },
+        {
+          "page": 2,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "mermaid-all",
+      "pages": 20,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "mermaid-error",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "mermaid-init-directive",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "page-breaks",
+      "pages": 3,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "toc-numbering",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "wide-table",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    },
+    {
+      "fixture": "xss",
+      "pages": 1,
+      "pixelDifference": [
+        {
+          "page": 1,
+          "ratio": 0
+        }
+      ]
+    }
+  ],
+  "benchmarkMs": 2286.3538699999917
+}
