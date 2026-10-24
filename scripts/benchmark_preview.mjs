@@ -5,7 +5,7 @@ import {resolve, basename} from 'node:path';
 import assert from 'node:assert/strict';
 
 const source = resolve(process.argv[2] || 'markdown');
-const root = process.env.MDPDF_BASE_URL || 'http://127.0.0.1:3000';
+const root = process.env.MDPDF_BASE_URL || 'http://127.0.0.1:4173/mdpdf/';
 const browser = await chromium.launch({executablePath:process.env.CHROME_PATH || chromium.executablePath(), chromiumSandbox:true});
 const results = [];
 try {
@@ -58,4 +58,4 @@ try {
 } finally { await browser.close(); }
 mkdirSync('target/verification',{recursive:true});
 const report = {source:basename(source),testedAt:new Date().toISOString(),results};
-writeFileSync('target/verification/preview-performance.json',JSON.stringify(report,null,2)+'\n');
+writeFileSync('target/verification/browser-performance.json',JSON.stringify(report,null,2)+'\n');

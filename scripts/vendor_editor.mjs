@@ -29,7 +29,7 @@ for (const [source, target] of [['inter/inter-latin-wght-normal.woff2','Inter.wo
 console.log('Vendored CodeMirror and its exact dependency licenses.');
 
 cpSync('assets/fonts', 'public/fonts', { recursive: true });
-writeFileSync('public/fonts/fonts.css', readFileSync('assets/fonts/fonts.css', 'utf8').replaceAll('/assets/fonts/', '/fonts/'));
+writeFileSync('public/fonts/fonts.css', readFileSync('assets/fonts/fonts.css', 'utf8').replaceAll('/assets/fonts/', './'));
 
 mkdirSync('assets/vendor/katex/fonts', {recursive:true});
 copyFileSync('node_modules/katex/dist/katex.min.js','assets/vendor/katex/katex.min.js');

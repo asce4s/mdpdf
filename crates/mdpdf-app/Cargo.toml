@@ -31,6 +31,7 @@ sha2 = { workspace = true, optional = true }
 default = ["ssr"]
 ssr = ["leptos/ssr", "leptos_meta/ssr", "dep:mdpdf-render", "dep:axum", "dep:leptos_axum", "dep:tokio", "dep:tower-http", "dep:base64", "dep:getrandom", "dep:sha2"]
 hydrate = ["leptos/hydrate", "dep:wasm-bindgen", "dep:js-sys", "dep:web-sys"]
+browser = ["leptos/csr", "dep:wasm-bindgen", "dep:js-sys", "dep:web-sys"]
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json", "multipart"] }
@@ -52,7 +53,7 @@ site-addr = "127.0.0.1:3000"
 reload-port = 3001
 bin-features = ["ssr"]
 bin-default-features = false
-lib-features = ["hydrate"]
+lib-features = ["browser"]
 lib-default-features = false
 lib-profile-dev = "wasm-release"
 lib-profile-release = "wasm-release"

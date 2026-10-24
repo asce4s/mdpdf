@@ -1,5 +1,7 @@
 import { EditorView, EditorState, Compartment, basicSetup, markdown, oneDark, setDiagnostics, openSearchPanel } from './vendor/editor.js';
 import { settings } from './settings.js';
+import {LocalAssets,assetUrl} from './browser-assets.js';
+import {BrowserRenderer} from './browser-renderer.js';
 const $ = id => document.getElementById(id);
 const DRAFT_KEY = 'mdpdf:draft:v1', THEMES_KEY = 'mdpdf:themes:v1';
 const SAMPLE = `# A better way to share ideas
@@ -56,45 +58,22 @@ function core(action,payload='') {
 function toast(message) { $('toast').textContent = message; $('toast').classList.remove('hidden'); clearTimeout(toast.timer); toast.timer = setTimeout(() => $('toast').classList.add('hidden'),5500); }
 function download(blob,name) { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url),10000); }
 function jsonRead(key,fallback) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } }
-async function errorResponse(response) { const raw = await response.text(); try { const body = JSON.parse(raw); const error = new Error(body.message || 'Request failed'); error.diagnostics = body.diagnostics || []; return error; } catch(error) { if (error.diagnostics) return error; return new Error(raw.slice(0,250) || `Request failed (${response.status})`); } }
 async function mount() {
   if (started || !window.mdpdfCore) return; started = true;
+  const assets = new LocalAssets();
+  const storedAssets = await assets.open();
   const saved = jsonRead(DRAFT_KEY,{});
   let theme;
   try { theme = saved.theme || core('default'); core('compile',{markdown:saved.markdown || '',theme}); } catch { theme = core('default'); }
-  const state = { markdown:typeof saved.markdown === 'string' ? saved.markdown : SAMPLE, theme, preset:saved.preset || 'default', fonts:[], mode:'live', dark:saved.dark !== false, guides:saved.guides !== false, sync:true, zoom:saved.zoom || 'fit', html:'', diagnostics:[], cache:new Map(), pageWidth:794, pageHeight:1123, height:1123, scale:1, pdfUrl:null, generation:0, savedThemes:jsonRead(THEMES_KEY,[]), pendingStyle:null };
+  const state = { markdown:typeof saved.markdown === 'string' ? saved.markdown : SAMPLE, theme, preset:saved.preset || 'default', fonts:storedAssets.filter(asset=>asset.kind==='font'), mode:'live', dark:saved.dark !== false, guides:saved.guides !== false, sync:true, zoom:saved.zoom || 'fit', html:'', diagnostics:[], cache:new Map(), pageWidth:794, pageHeight:1123, height:1123, scale:1, pdfUrl:null, generation:0, savedThemes:jsonRead(THEMES_KEY,[]), pendingStyle:null };
   window.mdpdf = { state, editor:null, ready:false };
   document.documentElement.classList.toggle('light-ui',!state.dark);
-  const fontCss = document.createElement('link'); fontCss.rel = 'stylesheet'; fontCss.href = '/fonts/fonts.css'; document.head.append(fontCss);
+  const fontCss = document.createElement('link'); fontCss.rel = 'stylesheet'; fontCss.href = assetUrl('fonts/fonts.css'); document.head.append(fontCss);
   $('filename').value = saved.filename || 'project-brief.md'; $('zoom').value = state.zoom;
   const editorTheme = new Compartment();
-  let typingTimer, saveTimer, pdfTimer, previewController, pdfController, muteEditor = 0, mutePreview = 0;
-  let frameReady = false, hasMath = false, workerId = 0, scrollFrame;
-  const coveredCharacters = new Set(), workerRequests = new Map();
-  let previewWorker;
-  try {
-    previewWorker = new Worker('/preview-worker.js',{type:'module'});
-    previewWorker.onmessage = ({data}) => {
-      const request = workerRequests.get(data.id);
-      if (!request) return;
-      workerRequests.delete(data.id);
-      if (data.error) request.reject(new Error(data.error)); else request.resolve(data.result);
-    };
-    previewWorker.onerror = () => {
-      previewWorker.terminate(); previewWorker = null;
-      for (const request of workerRequests.values()) request.reject(new Error('Preview worker unavailable'));
-      workerRequests.clear();
-    };
-  } catch { previewWorker = null; }
-  function renderLocal(markdown,theme,signal) {
-    return new Promise((resolve,reject) => {
-      const id = ++workerId;
-      const abort = () => { workerRequests.delete(id); reject(new DOMException('Superseded preview','AbortError')); };
-      workerRequests.set(id,{resolve:result=>{signal.removeEventListener('abort',abort);resolve(result);},reject:error=>{signal.removeEventListener('abort',abort);reject(error);}});
-      signal.addEventListener('abort',abort,{once:true});
-      previewWorker.postMessage({id,payload:JSON.stringify({markdown,theme})});
-    });
-  }
+  let typingTimer, saveTimer, previewController, muteEditor = 0, mutePreview = 0;
+  let frameReady = false, scrollFrame;
+  const renderer = new BrowserRenderer(assets,()=>schedulePreview());
   const editor = new EditorView({ parent:$('editor'), state:EditorState.create({doc:state.markdown,extensions:[basicSetup,markdown(),EditorView.lineWrapping,editorTheme.of(state.dark ? oneDark : []),EditorView.contentAttributes.of({'aria-label':'Markdown source','spellcheck':'false'}),EditorView.updateListener.of(update => {
     if (update.docChanged) { state.markdown = update.state.doc.toString(); stats(); schedulePreview(); scheduleSave(); }
     if (update.selectionSet || update.viewportChanged) {
@@ -141,86 +120,48 @@ async function mount() {
   }
   const resizeObserver = new ResizeObserver(resizePaper); resizeObserver.observe($('preview-scroll'));
   function compileTheme(structural=false) {
-    const previewPending = frameReady && !window.mdpdf.ready;
-    const result = core('compile',{markdown:state.markdown,theme:state.theme});
+    const result=core('compile',{markdown:state.markdown,theme:state.theme});
     if(structural)result.body=core('body',{markdown:state.markdown,theme:state.theme}).body;
-    const fontNames=new Set([result.theme.typography.body_font,result.theme.typography.heading_font,result.theme.typography.mono_font,result.theme.diagrams.font_family]);
-    result.fonts=state.fonts.filter(asset=>asset.dataUrl && fontNames.has('assetfont-'+asset.id)).map(asset=>({family:'assetfont-'+asset.id,url:asset.dataUrl}));
-    state.pendingStyle = {...result,revision:state.revision,preserveImages:structural,deferRender:previewPending};
-    state.localDiagnostics = result.diagnostics;
-    diagnostics([...(state.serverDiagnostics || []),...result.diagnostics]);
+    result.fonts=documentFonts(result);
+    state.pendingStyle={...result,revision:state.revision,preserveImages:structural};
     post({type:'style',...state.pendingStyle});
     pageStatus(result);
-    if (previewPending) void renderPreview();
+    schedulePreview();
     return result;
   }
   function pageStatus(result) {
     const size = result.theme.page.size;
     $('page-status').textContent = `${typeof size === 'string' ? size.toUpperCase() : 'Custom'} · ${result.theme.page.orientation === 'landscape' ? 'Landscape':'Portrait'}`;
   }
-  function schedulePreview() { clearTimeout(typingTimer); previewController?.abort(); typingTimer = setTimeout(renderPreview,100); if ($('auto-pdf').checked && state.mode === 'pdf') { clearTimeout(pdfTimer); pdfTimer = setTimeout(() => exactPdf(false),2000); } }
+  function schedulePreview() {
+    clearTimeout(typingTimer); previewController?.abort();
+    window.mdpdf.ready=false; $('export-pdf').disabled=true;
+    typingTimer=setTimeout(renderPreview,100);
+  }
   function documentFonts(result) {
     const names = new Set([result.theme.typography.body_font,result.theme.typography.heading_font,result.theme.typography.mono_font,result.theme.diagrams.font_family]);
     return state.fonts.filter(asset=>asset.dataUrl && names.has('assetfont-'+asset.id)).map(asset=>({family:'assetfont-'+asset.id,url:asset.dataUrl}));
   }
   async function renderPreview() {
-    clearTimeout(typingTimer); previewController?.abort(); previewController = new AbortController(); const generation = ++state.generation;
-    const {signal} = previewController;
-    const markdown = state.markdown, theme = structuredClone(state.theme);
-    // Stop older frame completions from marking a newer document ready.
+    clearTimeout(typingTimer); typingTimer=null;
+    previewController?.abort(); previewController=new AbortController();
+    const generation=++state.generation, {signal}=previewController;
+    state.revision=generation; window.mdpdf.ready=false; window.mdpdf.lastContentMs=null;
+    $('export-pdf').disabled=true;
     post({type:'invalidate',revision:generation});
-    state.revision = generation; window.mdpdf.ready = false; window.mdpdf.lastContentMs = null;
-    status('Updating preview',true); const start = performance.now();
+    status('Updating preview',true); state.requestStarted=performance.now();
     try {
-      let local;
-      if (frameReady && previewWorker) {
-        try { local = await renderLocal(markdown,theme,signal); }
-        catch(error) { if (error.name === 'AbortError') throw error; }
-      }
-      if (signal.aborted || generation !== state.generation) return;
-      const newCharacters = local && [...local.characters].some(character=>!coveredCharacters.has(character));
-      if (local && !local.requiresServer && (!local.hasMath || hasMath) && !newCharacters) {
-        state.serverDiagnostics = local.diagnostics; state.localDiagnostics = [];
-        diagnostics(local.diagnostics);
-        state.pendingStyle = {...local,fonts:documentFonts(local),revision:generation};
-        pageStatus(local);
-        state.requestStarted = start;
-        post({type:'style',...state.pendingStyle});
-        return;
-      }
-      if (local && !local.requiresServer && (!local.hasMath || hasMath)) {
-        // Show the document while native delivery supplies new font subsets.
-        // Defer diagram measurement until those fonts are available.
-        state.requestStarted = start;
-        state.serverDiagnostics = local.diagnostics; state.localDiagnostics = [];
-        diagnostics(local.diagnostics);
-        state.pendingStyle = {...local,fonts:documentFonts(local),revision:generation,deferRender:true};
-        pageStatus(local);
-        post({type:'style',...state.pendingStyle});
-      }
-      const response = await fetch(frameReady ? '/api/rpc/render_preview_update' : '/api/rpc/render_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown,theme,include_math:!hasMath}),signal});
-      if (!response.ok) throw await errorResponse(response);
-      const result = await response.json(); if (generation !== state.generation) return;
-      state.serverDiagnostics = result.diagnostics; diagnostics(result.diagnostics);
-      for (const character of local?.characters || (markdown + JSON.stringify(theme)).match(/[^\x00-\x7f]/gu) || []) coveredCharacters.add(character);
-      state.requestStarted = start;
-      if (frameReady) {
-        const styling = core('compile',{markdown,theme});
-        pageStatus(styling);
-        hasMath ||= Boolean(result.mathScript);
-        state.pendingStyle = {...styling,...result,fonts:documentFonts(styling),revision:generation};
-        state.localDiagnostics = [];
-        post({type:'style',...state.pendingStyle});
-        return;
-      }
-      state.html = result.html;
-      hasMath = [...result.html.matchAll(/<script[^>]+src="data:text\/javascript;base64,/g)].length > 1;
-      const nonce = result.html.match(/nonce="([^"]+)"/)?.[1];
-      const cache = JSON.stringify([...state.cache]).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026');
-      const html = nonce ? result.html.replace('</head>',`<script nonce="${nonce}" id="mdpdf-cached-svgs" type="application/json">${cache}</script></head>`) : result.html;
-      $('live-preview').srcdoc = html;
-      compileTheme();
-    } catch(error) { if (error.name !== 'AbortError') { status('Preview needs attention'); toast(error.message); } }
+      const result=await renderer.render(state.markdown,structuredClone(state.theme),{includeShell:!frameReady,signal});
+      if(signal.aborted || generation!==state.generation)return;
+      state.renderDiagnostics=result.diagnostics;
+      diagnostics(result.diagnostics);
+      state.pendingStyle={...result,revision:generation};
+      pageStatus(result);
+      if(!frameReady){state.html=result.html;$('live-preview').srcdoc=result.html;}
+      else post({type:'style',...state.pendingStyle});
+    }catch(error){
+      if(error.name!=='AbortError'){status('Preview needs attention');toast(error.message);}
+    }
   }
   $('live-preview').addEventListener('load',() => { if (state.pendingStyle) post({type:'style',...state.pendingStyle,revision:state.revision}); post({type:'guides',enabled:state.guides}); });
   window.addEventListener('message',event => {
@@ -232,17 +173,21 @@ async function mount() {
     }
     if (message.type === 'size') { state.height = message.height; state.pageWidth = message.width || 794; state.pageHeight = message.pageHeight || 1123; resizePaper(); }
     if (message.type === 'ready') {
-      if (message.revision !== undefined && message.revision !== state.revision) return;
+      if (typingTimer || (message.revision !== undefined && message.revision !== state.revision)) return;
       frameReady = true;
-      diagnostics([...(state.serverDiagnostics || []),...(state.localDiagnostics || []),...message.diagnostics]);
+      diagnostics([...(state.renderDiagnostics || []),...message.diagnostics]);
       for (const [key,svg] of message.cache || []) state.cache.set(key,svg);
       while (state.cache.size > 200) state.cache.delete(state.cache.keys().next().value);
       $('preview-empty').classList.add('hidden');
       const count = (state.markdown.match(/^```mermaid/gm) || []).length;
       status(`${message.diagnostics.length ? 'Needs attention':'Preview ready'}${count ? ` · ${count} diagram${count === 1 ? '':'s'}`:''}`);
-      window.mdpdf.ready = true; window.mdpdf.lastRenderMs = performance.now() - (state.requestStarted || performance.now());
+      window.mdpdf.ready = true; $('export-pdf').disabled=false; window.mdpdf.lastRenderMs = performance.now() - (state.requestStarted || performance.now());
     }
     if (message.type === 'bridge-error') toast(message.message);
+    if (message.type === 'printed') status('Preview ready');
+    if (message.type === 'open-link') {
+      try { const url=new URL(message.url,location.href);if(['http:','https:','mailto:'].includes(url.protocol))window.open(url.href,'_blank','noopener,noreferrer'); } catch {}
+    }
     if (message.type === 'scroll-position' && state.sync) { mutePreview = performance.now()+250; $('preview-scroll').scrollTop = Math.max(0,message.y*state.scale-35); }
     if (message.type === 'editor-line' && state.sync) { muteEditor = performance.now()+250; const line = editor.state.doc.line(Math.min(Math.max(message.line,1),editor.state.doc.lines)); editor.dispatch({effects:EditorView.scrollIntoView(line.from,{y:'start'})}); }
   });
@@ -264,7 +209,6 @@ async function mount() {
       for (const part of parts.slice(0,-1)) target = target[part];
       target[parts.at(-1)] = value;
       compileTheme(['page.toc','page.toc_depth','page.heading_numbers','code.line_numbers','code.avoid_break_under_lines','diagrams.captions','diagrams.numbering'].includes(path)); scheduleSave();
-      if ($('auto-pdf').checked && state.mode === 'pdf') { clearTimeout(pdfTimer); pdfTimer=setTimeout(() => exactPdf(false),2000); }
       return true;
     } catch(error) { Object.assign(state.theme,previous); toast(error.message); return false; }
   }
@@ -287,23 +231,13 @@ async function mount() {
   $('import-theme').onclick=()=>$('theme-file').click();
   $('theme-file').onchange=async()=>{const file=$('theme-file').files[0];if(!file)return;try{if(file.size>50*1024)throw new Error('Theme exceeds 50 KB');state.theme=core('import',await file.text());state.preset='default';presets();rebuildSettings();compileTheme(true);scheduleSave();toast('Theme imported');}catch(error){toast(error.message);}finally{$('theme-file').value='';}};
   const filename = extension => ($('filename').value || 'document.md').replace(/\.(md|markdown|pdf)$/i,'')+'.'+extension;
-  async function exactPdf(asDownload) {
-    if (asDownload) $('export-pdf').disabled=true;
-    else { pdfController?.abort();pdfController=new AbortController();$('refresh-pdf').classList.add('spinner'); }
-    const start=performance.now();status('Rendering PDF',true);
-    try {
-      const response=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown:state.markdown,theme:state.theme,filename:filename('pdf'),strict_diagrams:$('strict-diagrams').checked}),...(asDownload?{}:{signal:pdfController.signal})});
-      if(!response.ok)throw await errorResponse(response);
-      const blob=await response.blob();
-      if(asDownload){download(blob,filename('pdf'));toast('Your PDF is ready');}
-      else {if(state.pdfUrl)URL.revokeObjectURL(state.pdfUrl);state.pdfUrl=URL.createObjectURL(blob);$('pdf-preview').src=state.pdfUrl;}
-      status(`PDF ready · ${((performance.now()-start)/1000).toFixed(1)}s`);
-    }catch(error){if(error.name!=='AbortError'){if(error.diagnostics)diagnostics(error.diagnostics);toast(error.message);status('PDF needs attention');}}
-    finally{$('export-pdf').disabled=false;$('refresh-pdf').classList.remove('spinner');}
+  function printDocument() {
+    if(!window.mdpdf.ready){toast('Wait for the preview to finish before printing');return;}
+    if($('strict-diagrams').checked && state.diagnostics.some(item=>item.kind==='Mermaid' && item.severity==='Error')){toast('Fix diagram errors before printing');return;}
+    post({type:'print',revision:state.revision,title:filename('pdf').replace(/\.pdf$/i,'')});
   }
-  $('export-pdf').onclick=()=>exactPdf(true);$('refresh-pdf').onclick=()=>exactPdf(false);
-  function mode(value){state.mode=value;$('live-mode').classList.toggle('selected',value==='live');$('pdf-mode').classList.toggle('selected',value==='pdf');$('live-mode').setAttribute('aria-selected',String(value==='live'));$('pdf-mode').setAttribute('aria-selected',String(value==='pdf'));$('paper-stage').classList.toggle('hidden',value==='pdf');$('pdf-preview').classList.toggle('hidden',value!=='pdf');$('refresh-pdf').classList.toggle('hidden',value!=='pdf');if(value==='pdf')exactPdf(false);else resizePaper();}
-  $('live-mode').onclick=()=>mode('live');$('pdf-mode').onclick=()=>mode('pdf');
+  $('export-pdf').onclick=printDocument;
+  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='p'){event.preventDefault();printDocument();}});
   $('zoom').onchange=()=>{state.zoom=$('zoom').value;resizePaper();scheduleSave();};
   const zoomStep=delta=>{const next=Math.max(.5,Math.min(2,Math.round((state.scale+delta)*100)/100));state.zoom=String(next);let option=[...$('zoom').options].find(o=>o.value===state.zoom);if(!option){option=new Option(`${Math.round(next*100)}%`,state.zoom);$('zoom').add(option);}$('zoom').value=state.zoom;resizePaper();scheduleSave();};
   $('zoom-in').onclick=()=>zoomStep(.1);$('zoom-out').onclick=()=>zoomStep(-.1);
@@ -319,24 +253,36 @@ async function mount() {
   const replaceDocument=md=>{muteEditor=performance.now()+250;editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:md},selection:{anchor:0},effects:EditorView.scrollIntoView(0,{y:'start'})});$('preview-scroll').scrollTop=0;};
   $('new-document').onclick=()=>{try{localStorage.setItem('mdpdf:previous-draft',state.markdown);}catch{}replaceDocument('');$('filename').value='untitled.md';state.cache.clear();$('document-actions').classList.add('hidden');editor.focus();};
   $('download-md').onclick=()=>{download(new Blob([state.markdown],{type:'text/markdown'}),filename('md'));$('document-actions').classList.add('hidden');};
-  $('download-html').onclick=async()=>{try{const response=await fetch('/api/rpc/render_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown:state.markdown,theme:state.theme})});if(!response.ok)throw await errorResponse(response);const result=await response.json();download(new Blob([result.html],{type:'text/html'}),filename('html'));}catch(error){toast(error.message);}$('document-actions').classList.add('hidden');};
+  $('download-html').onclick=async()=>{try{const html=await renderer.exportHtml(state.markdown,state.theme);download(new Blob([html],{type:'text/html'}),filename('html'));}catch(error){toast(error.message);}$('document-actions').classList.add('hidden');};
   let fileGeneration=0;
   async function openMarkdown(file){if(file.size>2*1024*1024){toast('Markdown exceeds 2 MB');return;}const current=++fileGeneration;const text=await file.text();if(current!==fileGeneration)return;replaceDocument(text);$('filename').value=file.name;scheduleSave();await renderPreview();}
   $('open-file').onclick=()=>$('markdown-file').click();$('markdown-file').onchange=async()=>{const file=$('markdown-file').files[0];if(file)await openMarkdown(file);$('markdown-file').value='';};
   function insert(value){const range=editor.state.selection.main;editor.dispatch({changes:{from:range.from,to:range.to,insert:value},selection:{anchor:range.from+value.length}});editor.focus();}
   $('insert-snippet').onchange=()=>{const key=$('insert-snippet').value;$('insert-snippet').value='';if(key==='image')$('image-file').click();else if(SNIPPETS[key])insert(SNIPPETS[key]);};
-  async function upload(file){const cap=/\.(ttf|otf|woff2)$/i.test(file.name)?5:10;if(file.size>cap*1024*1024)throw new Error(`File exceeds ${cap} MB`);const data=new FormData();data.append('file',file);const response=await fetch('/api/assets',{method:'POST',body:data});if(!response.ok)throw await errorResponse(response);return response.json();}
-  async function image(file){try{const asset=await upload(file);if(asset.kind!=='image')throw new Error('Choose a PNG, JPEG or WebP image');insert(`![${file.name.replace(/[\[\]]/g,'')}](asset://${asset.id})`);}catch(error){toast(error.message);}}
+  async function importFile(file){const asset=await assets.import(file);if(assets.warning){toast(assets.warning);assets.warning=null;}return asset;}
+  async function image(file){try{const asset=await importFile(file);if(asset.kind!=='image')throw new Error('Choose a PNG, JPEG or WebP image');insert(`![${file.name.replace(/[\[\]]/g,'')}](asset://${asset.id})`);}catch(error){toast(error.message);}}
   $('image-file').onchange=async()=>{const file=$('image-file').files[0];if(file)await image(file);$('image-file').value='';};
-  async function registerFont(asset){try{const response=await fetch(asset.url);if(!response.ok)throw new Error();const bytes=await response.arrayBuffer();const face=await new FontFace('assetfont-'+asset.id,bytes).load();document.fonts.add(face);asset.dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(new Blob([bytes],{type:asset.mime}));});}catch{toast(`Could not load font: ${asset.name}`);}}
-  $('upload-font').onclick=()=>$('font-file').click();$('font-file').onchange=async()=>{const file=$('font-file').files[0];if(!file)return;try{const probe=new FontFace('mdpdf-upload-check',await file.arrayBuffer());await probe.load();const asset=await upload(file);if(asset.kind!=='font')throw new Error('Choose a TTF, OTF or WOFF2 font');await registerFont(asset);if(!state.fonts.some(font=>font.id===asset.id))state.fonts.push(asset);rebuildSettings();changeTheme('typography.body_font','assetfont-'+asset.id);rebuildSettings();renderPreview();toast('Font uploaded and applied to body text');}catch(error){toast(error.message);}finally{$('font-file').value='';}};
+  async function registerFont(asset){try{const face=await new FontFace('assetfont-'+asset.id,`url(${asset.dataUrl})`).load();document.fonts.add(face);}catch{toast(`Could not load font: ${asset.name}`);}}
+  $('upload-font').onclick=()=>$('font-file').click();
+  $('font-file').onchange=async()=>{const file=$('font-file').files[0];if(!file)return;try{const asset=await importFile(file);if(asset.kind!=='font')throw new Error('Choose a TTF, OTF or WOFF2 font');await registerFont(asset);if(!state.fonts.some(font=>font.id===asset.id))state.fonts.push(asset);rebuildSettings();changeTheme('typography.body_font','assetfont-'+asset.id);rebuildSettings();toast('Font imported and applied to body text');}catch(error){toast(error.message);}finally{$('font-file').value='';}};
   document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
-  document.addEventListener('drop',async event=>{const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;event.preventDefault();event.stopPropagation();for(const file of files){if(/\.(md|markdown|txt)$/i.test(file.name))await openMarkdown(file);else await image(file);}},{capture:true});
+  document.addEventListener('drop',async event=>{
+    const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;
+    event.preventDefault();event.stopPropagation();
+    try{
+      const documents=files.filter(file=>/\.(md|markdown|txt)$/i.test(file.name));
+      if(documents.length){
+        for(const file of files.filter(file=>!documents.includes(file))){const asset=await importFile(file);if(asset.kind==='font'){await registerFont(asset);if(!state.fonts.some(font=>font.id===asset.id))state.fonts.push(asset);}}
+        rebuildSettings();await openMarkdown(documents.at(-1));
+      }else for(const file of files)await image(file);
+    }catch(error){toast(error.message);}
+  },{capture:true});
   $('editor').addEventListener('paste',event=>{const files=[...(event.clipboardData?.files||[])];if(files.length){event.preventDefault();for(const file of files)image(file);}});
   function resizer(id,variable,min,max,invert){const node=$(id);node.onpointerdown=event=>{node.setPointerCapture(event.pointerId);const origin=event.clientX;const initial=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;const move=event=>{$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,initial+(event.clientX-origin)*(invert?-1:1)))+'px');resizePaper();};node.onpointermove=move;node.onpointerup=()=>{node.onpointermove=null;};};node.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const current=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,current+(event.key==='ArrowLeft'?-20:20)*(invert?-1:1)))+'px');resizePaper();}};}
   resizer('editor-resizer','--editor-width',260,650,false);resizer('settings-resizer','--settings-width',245,440,true);
   window.addEventListener('beforeunload',save);
-  try{const response=await fetch('/api/assets');if(response.ok){state.fonts=(await response.json()).filter(asset=>asset.kind==='font');await Promise.all(state.fonts.map(registerFont));}}catch{}
+  await Promise.all(state.fonts.map(registerFont));
+  if(assets.warning)toast(assets.warning);
   presets();rebuildSettings();stats();resizePaper();save();await renderPreview();
 }
 window.addEventListener('mdpdf-ready',()=>mount().catch(error=>{console.error(error);toast(error.message);}));

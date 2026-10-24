@@ -1,13 +1,23 @@
-name: Verify
-on: [push, pull_request]
+name: Verify browser app
+on:
+  push:
+    branches: [browser-only]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publish the verified static build to GitHub Pages
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      LEPTOS_OUTPUT_NAME: mdpdf-app
-      LEPTOS_SITE_ROOT: target/site
-      PLAYWRIGHT_BROWSERS_PATH: /tmp/mdpdf-browsers
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
@@ -20,35 +30,43 @@ jobs:
           cache: npm
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
-      - run: npm ci --ignore-scripts && npm run vendor && npx playwright install --with-deps chromium
-      - run: |
-          node -e 'console.log("CHROME_PATH="+require("playwright").chromium.executablePath())' >> "$GITHUB_ENV"
+      - run: npm ci --ignore-scripts
       - run: cargo install cargo-leptos --version 0.3.6 --locked
+      - run: npm run build
       - run: cargo fmt --check && cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked && cargo check -p mdpdf-core --target wasm32-unknown-unknown --locked
-      - run: node --test crates/mdpdf-core/tests/bootstrap.test.cjs && python3 scripts/check_assets.py && node scripts/check_browser.cjs
-      - run: cargo leptos build && cargo build -p mdpdf-cli --locked
-      - run: cargo test --workspace --locked -- --ignored --nocapture
-      - run: npm run test:e2e
-      - run: |
-          bash scripts/e2e-server.sh > /tmp/mdpdf-server.log 2>&1 &
-          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/healthz && break || sleep 1; done
-          node scripts/verify_delivery.mjs
+      - run: npm run lint && node --test crates/mdpdf-core/tests/bootstrap.test.cjs && python3 scripts/check_assets.py
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-site
+          path: target/browser
+          include-hidden-files: true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-and-pdf-results
-          path: |
-            test-results
-            target/verification
-  container:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+          name: browser-test-results
+          path: test-results
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t mdpdf .
-      - run: |
-          docker run -d --name mdpdf -p 3000:3000 --shm-size=1g mdpdf
-          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/healthz && exit 0 || sleep 1; done
-          docker logs mdpdf
-          exit 1
+      - uses: actions/configure-pages@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: browser-site
+          path: site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

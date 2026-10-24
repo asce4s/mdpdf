@@ -3,7 +3,9 @@
 pub mod css;
 pub mod diagnostics;
 pub mod frontmatter;
+pub mod images;
 mod parse;
+pub mod syntax;
 pub mod theme;
 pub mod toc;
 mod transform;

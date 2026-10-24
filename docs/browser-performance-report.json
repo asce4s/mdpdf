@@ -1,0 +1,120 @@
+{
+  "source": "markdown",
+  "testedAt": "2026-10-24T04:07:03.219Z",
+  "results": [
+    {
+      "file": "Untitled.md",
+      "bytes": 108149,
+      "dropToReadyMs": 617,
+      "dropToContentMs": 506,
+      "contentUpdateMs": 440,
+      "renderMs": 501,
+      "previewRequests": 0,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "crawler-project-context.md",
+      "bytes": 5120,
+      "dropToReadyMs": 89,
+      "dropToContentMs": 71,
+      "contentUpdateMs": 39,
+      "renderMs": 39,
+      "previewRequests": 0,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-db-design.md",
+      "bytes": 137214,
+      "dropToReadyMs": 4167,
+      "dropToContentMs": 568,
+      "contentUpdateMs": 513,
+      "renderMs": 4098,
+      "previewRequests": 0,
+      "diagrams": 8,
+      "renderedDiagrams": 8,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-deployment.md",
+      "bytes": 45047,
+      "dropToReadyMs": 312,
+      "dropToContentMs": 263,
+      "contentUpdateMs": 229,
+      "renderMs": 266,
+      "previewRequests": 0,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-high-level-design.md",
+      "bytes": 40906,
+      "dropToReadyMs": 618,
+      "dropToContentMs": 130,
+      "contentUpdateMs": 96,
+      "renderMs": 565,
+      "previewRequests": 0,
+      "diagrams": 6,
+      "renderedDiagrams": 6,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-logical-data-model.md",
+      "bytes": 64552,
+      "dropToReadyMs": 759,
+      "dropToContentMs": 286,
+      "contentUpdateMs": 250,
+      "renderMs": 709,
+      "previewRequests": 0,
+      "diagrams": 3,
+      "renderedDiagrams": 3,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-low-level-design.md",
+      "bytes": 90596,
+      "dropToReadyMs": 723,
+      "dropToContentMs": 320,
+      "contentUpdateMs": 274,
+      "renderMs": 657,
+      "previewRequests": 0,
+      "diagrams": 2,
+      "renderedDiagrams": 2,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    },
+    {
+      "file": "web-crawler-requirements.md",
+      "bytes": 47073,
+      "dropToReadyMs": 282,
+      "dropToContentMs": 230,
+      "contentUpdateMs": 195,
+      "renderMs": 224,
+      "previewRequests": 0,
+      "diagrams": 0,
+      "renderedDiagrams": 0,
+      "diagnostics": [],
+      "scrollGeometryReads": 0
+    }
+  ],
+  "verification": {
+    "browserTests": 17,
+    "ordinaryRustTests": 44,
+    "backendRequired": false,
+    "rootAndProjectPathTested": true,
+    "offlineHtmlAndPdfPrintTested": true,
+    "wasmBrowserClippyPassed": true,
+    "githubPagesPublished": false
+  },
+  "method": "Single local Chromium run, after initial app readiness. All requests are served as static files. Drop-to-content records the first content message after DOM replacement, not a browser paint timestamp. Readiness includes fonts and every diagram. Fonts and SVG caches are retained between samples."
+}

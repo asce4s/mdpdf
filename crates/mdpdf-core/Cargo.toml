@@ -11,7 +11,7 @@ serde_json.workspace = true
 toml.workspace = true
 comrak.workspace = true
 ammonia.workspace = true
-syntect.workspace = true
+syntect = { workspace = true, features = ["plist-load"] }
 serde-saphyr.workspace = true
 
 [dev-dependencies]

@@ -1,7 +1,7 @@
 pub mod app;
 pub mod model;
 
-#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+#[cfg(all(any(feature = "hydrate", feature = "browser"), target_arch = "wasm32"))]
 mod client;
 #[cfg(feature = "ssr")]
 pub mod server;
@@ -10,6 +10,66 @@ pub mod server;
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
     leptos::mount::hydrate_body(app::App);
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn mount_browser() {
+    leptos::mount::mount_to_body(app::App);
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn render_preview_browser(payload: &str) -> Result<String, wasm_bindgen::JsValue> {
+    #[derive(serde::Deserialize)]
+    struct Request {
+        markdown: String,
+        theme: mdpdf_core::Theme,
+        #[serde(default)]
+        images: std::collections::BTreeMap<String, String>,
+        #[serde(default)]
+        include_shell: bool,
+        #[serde(default)]
+        nonce: String,
+    }
+    let request: Request = serde_json::from_str(payload)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+    let images = mdpdf_core::images::prepare_images(&request.markdown, &request.images);
+    let mut document = images.embed(mdpdf_core::build_print_document(
+        &images.markdown,
+        &request.theme,
+    ));
+    for diagnostic in &mut document.diagnostics {
+        if diagnostic.kind == mdpdf_core::DiagKind::Image {
+            diagnostic.message = "Image not available locally. Drop the referenced image file here or choose Insert → Image. Remote images need browser CORS permission.".into();
+        }
+    }
+    let body = document
+        .html
+        .split_once("<main>")
+        .and_then(|(_, rest)| rest.split_once("</main>"))
+        .map_or("", |(body, _)| body)
+        .to_owned();
+    let (theme, _, _) = mdpdf_core::document_theme(&request.markdown, &request.theme);
+    let shell = if request.include_shell {
+        Some(
+            document
+                .clone()
+                .with_nonce(&request.nonce)
+                .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?
+                .html,
+        )
+    } else {
+        None
+    };
+    Ok(serde_json::json!({
+        "body":body, "css":document.css, "theme":theme,
+        "metadata":document.metadata, "config":mdpdf_core::css::mermaid_config(&theme),
+        "diagnostics":document.diagnostics, "unresolvedImages":images.unresolved,
+        "hasMath":document.html.contains("src=\"/assets/vendor/katex/katex.min.js\""),
+        "shell":shell,
+    })
+    .to_string())
 }
 
 /// Pure rendering entry point for the preview worker. No DOM or Leptos runtime

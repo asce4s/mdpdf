@@ -87,7 +87,7 @@ export function settings({ theme, preset, fonts, onChange, onReset }) {
       sample = el('p','font-sample','The quick brown fox.'); sample.style.fontFamily = value || theme.typography.body_font; wrapper.append(sample);
       const system=el('input');system.type='text';system.placeholder='Or enter a system font';system.setAttribute('aria-label',labelText+' system font');
       system.addEventListener('change',()=>{const name=system.value.trim();if(!name)return;if(onChange(path,name)!==false){if(![...input.options].some(option=>option.value===name))input.add(new Option(name,name));input.value=name;sample.style.fontFamily=name;}});wrapper.append(system);
-      wrapper.append(el('p','field-help','System fonts must also be installed on the PDF server.'));
+      wrapper.append(el('p','field-help','System fonts are available only on this device. Import a font to include it in exported HTML.'));
     }
     parent.append(wrapper);
     if (path === 'page.size' && typeof value === 'object') {
@@ -110,7 +110,7 @@ export function settings({ theme, preset, fonts, onChange, onReset }) {
         const upload = el('button','section-reset','Import .tmTheme'); upload.type='button';
         const file = el('input'); file.type='file'; file.accept='.tmTheme'; file.hidden=true;
         upload.onclick=()=>file.click();
-        file.onchange=async()=>{try{const selected=file.files[0];if(!selected)return;if(selected.size>2*1024*1024)throw new Error('Syntax theme exceeds 2 MB');const response=await fetch('/api/syntax/import',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:await selected.arrayBuffer()});const result=await response.json();if(!response.ok)throw new Error(result.message);onChange('code.custom_syntax_css',result.css);settings({theme,preset,fonts,onChange,onReset});}catch(error){const note=el('p','field-help',error.message);note.setAttribute('role','alert');body.append(note);}finally{file.value='';}};
+        file.onchange=async()=>{try{const selected=file.files[0];if(!selected)return;if(selected.size>2*1024*1024)throw new Error('Syntax theme exceeds 2 MB');const result=JSON.parse(window.mdpdfCore('syntax',await selected.text()));if(result.error)throw new Error(result.error);onChange('code.custom_syntax_css',result.css);settings({theme,preset,fonts,onChange,onReset});}catch(error){const note=el('p','field-help',error.message);note.setAttribute('role','alert');body.append(note);}finally{file.value='';}};
         body.append(upload,file);
       }
       if (section === 'page') {
@@ -122,7 +122,7 @@ export function settings({ theme, preset, fonts, onChange, onReset }) {
         data.levels.forEach((level,index) => { body.append(el('div','nested-heading','Heading ' + (index + 1))); for (const [key,value] of Object.entries(level)) field(`headings.levels.${index}.${key}`,value,body); });
       } else if (section === 'header_footer') {
         for (const slot of ['header','footer']) { body.append(el('div','field-heading',title(slot))); for (const [key,value] of Object.entries(data[slot])) field(`header_footer.${slot}.${key}`,value,body); }
-        const help = el('p','field-help','Tokens: {title}, {author}, {date}, {page}, {pages}, {section}'); body.append(help);
+        const help = el('p','field-help','Tokens: {title}, {author}, {date}, {page}, {pages}. Page counters depend on your browser; {section} is not supported in this edition.'); body.append(help);
         for (const key of ['font_size','color','hide_on_first_page']) field('header_footer.'+key,data[key],body);
       } else {
         for (const [key,value] of Object.entries(data)) {

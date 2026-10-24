@@ -42,6 +42,8 @@ pub fn install_bridge() {
         let callback = Closure::<dyn FnMut(String, String) -> String>::new(
             move |action: String, payload: String| {
                 let result: Result<String, String> = (|| match action.as_str() {
+                    "syntax" => mdpdf_core::syntax::import_syntax_theme(payload.as_bytes())
+                        .map(|css| json!({"css":css}).to_string()),
                     "compile" => {
                         let input: Value =
                             serde_json::from_str(&payload).map_err(|e| e.to_string())?;

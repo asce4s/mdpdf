@@ -2296,6 +2296,11 @@ text-decoration: underline;
         await window.__MDPDF_RENDER__(message.config);
       } catch (error) { send({ type: 'bridge-error', message: String(error) }); }
       if (current === updateId && (message.revision === undefined || message.revision === revision)) { updating = false; rendered(); }
+    } else if (message.type === 'print') {
+      if (message.revision !== revision || updating || !window.__MDPDF_READY__) { send({type:'bridge-error',message:'Wait for the preview to finish before printing'}); return; }
+      document.title = message.title || document.title;
+      window.focus(); window.print();
+      send({type:'printed'});
     } else if (message.type === 'guides') { showGuides = message.enabled; updateGuides(); }
     else if (message.type === 'scroll-line' || message.type === 'position-line') syncScroll(message);
   });

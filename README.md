@@ -1,98 +1,59 @@
-# mdpdf
+# mdpdf — browser-only
 
-Markdown to tagged PDF, built with Rust, Leptos and Chromium. Write in CodeMirror, see a sandboxed live preview, customize the document, and download a PDF with selectable text and vector Mermaid diagrams. Preview, web export and CLI use the same core renderer.
+Write Markdown, preview it with Rust/WASM, and save it as PDF using your browser. This branch runs entirely from static files: there is no application server, upload API, or server-side Chromium process.
 
-![The mdpdf editor, live preview and settings](docs/screenshot.png)
+![The browser-only editor and local preview](docs/screenshot.png)
 
-## Run locally
+The [`main` branch](https://github.com/asce4s/mdpdf/tree/main) retains the server-based edition with automatic PDF downloads and exact PDF preview. This `browser-only` branch is suitable for GitHub Pages and other static hosts.
 
-Install Rust 1.91.1 or newer, Node.js 22+, Chromium and Poppler (for verification). Then:
+## Build and run
+
+Build tools: Rust 1.91.1+, Node.js 22+, the Rust WASM target and cargo-leptos 0.3.6. A server-side browser is not required to build or run the app.
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install cargo-leptos --version 0.3.6 --locked
 npm ci --ignore-scripts
-npm run dev
+npm run build
+npm run preview
 ```
 
-Open **http://127.0.0.1:3000**. Set `CHROME_PATH` if Chromium is not on PATH. `npm run dev` bundles the pinned editor, builds native and WASM targets, and starts the app. Use `cargo leptos watch` for Rust live reload after `npm run vendor`.
+Open **http://127.0.0.1:4173/**. `npm run dev` builds and starts the same static preview server. After the first setup, `npm run build` creates **`target/browser/`**; publish that directory without a Rust or Node runtime. Node is used only for build tools and the optional local file server. Opening `index.html` through `file://` does not support module workers and WASM reliably; use a static HTTP(S) host.
 
-The browser WASM uses the optimized `wasm-release` profile in development too. Markdown parsing and syntax highlighting run in a background Rust/WASM worker. Live updates retain the sandbox, fonts and unchanged rendered blocks; native delivery supplies image assets and newly needed font subsets. File opens and drops bypass the typing debounce. Text can appear while new font subsets load; diagrams wait for those fonts and stop rendering obsolete documents when you switch files.
+The output uses relative asset URLs, so the same build works at `/` and at a project path such as `/mdpdf/`. It contains the editor, optimized WASM, Mermaid, KaTeX, fonts and their license notices. It does not use a runtime CDN.
 
-Production builds:
+## Use the editor
 
-```sh
-npm run vendor
-cargo leptos build --release
-cargo build --release --locked -p mdpdf-cli
-LEPTOS_SITE_ROOT=target/site target/release/mdpdf-app
-```
+- Open or drop Markdown, edit it in CodeMirror, and adjust the document theme. Parsing and syntax highlighting run in a background Rust/WASM worker. Browsers without workers fall back to local WASM on the main thread.
+- Preview updates reuse the sandbox and unchanged blocks. Scrolling uses cached source positions, and opening another document cancels the remaining diagrams from the previous one.
+- Drop Markdown and its PNG/JPEG/WebP images together to resolve relative paths and reference images. You can also choose **Insert → Image** or paste an image. Imported images and fonts stay in IndexedDB in this browser; drafts, themes and preferences use local storage.
+- Import TTF, OTF or WOFF2 fonts and TextMate `.tmTheme` syntax styles locally. Theme TOML import/export, presets, structural controls, math, cover pages and figure numbering use the shared Rust renderer.
+- Choose **Print / Save PDF**, then select **Save as PDF** in the browser print dialog. Printing waits for fonts and diagrams. Strict diagrams blocks printing while a diagram has an error. The print dialog controls paper settings, scaling, backgrounds and optional browser headers/footers.
+- Download Markdown or **print HTML** from the document menu. Supported images, used font subsets, Mermaid and KaTeX are embedded into HTML so it can render and print without network access. Markdown exports retain their image references; use HTML for a portable document with imported assets.
 
-The `justfile` provides equivalent `dev`, `build`, `test`, `browser-test`, `visual` and Docker recipes.
+Remote Markdown images are fetched directly by your browser, without credentials, and need the image host's CORS permission. If a remote image cannot be read, import its local file instead. No server proxy is involved. Imported files are local to the current browser and site origin; clearing site data removes them, and private browsing or storage quotas can prevent persistence. The editor reports storage failures and keeps the current file in memory when possible.
 
-## Use the workspace
+Limits: 2 MB of Markdown, 50 document images, 10 MB per image, 5 MB per font, 100 imported files including 10 fonts, and 64 MB of imported assets. Bundled fonts are fetched from the static host as needed. Fonts and runtime resources already loaded in the current tab are reused.
 
-- Open or drop Markdown; insert tables, Mermaid templates, images, page breaks and a TOC from the snippet menu. Paste images directly into the editor.
-- Drafts, saved themes and UI preferences stay in browser storage. Uploads stay in a private cookie-scoped session on this server; keep the same browser session to reopen them.
-- Change any theme field in Settings, reset a section, select a preset, or import/export `.mdpdf-theme.toml`. CSS compiles locally in WASM. Structural settings also use the shared core locally.
-- Upload TTF, OTF or WOFF2 fonts, then choose them for body, headings, code or diagrams. Import `.tmTheme` files under Code blocks.
-- Switch between the live HTML preview and the exact PDF. Exact mode refreshes manually or two seconds after editing with auto-refresh enabled. Page guides in live mode are approximate; exact mode shows real pagination.
-- Export PDF, Markdown or self-contained HTML. Strict diagrams rejects an export with broken diagrams; normal exports include readable error boxes.
-- On small screens, use Editor, Preview and Settings tabs. The interface supports light/dark appearance, resizing, search, zoom and scroll synchronization.
+Final pagination is provided by your browser's print preview. This edition does not generate PDF bytes for an embedded exact-preview tab. Server-specific bookmark/tag/metadata processing and running `{section}` labels are not supplied by the web app; output capabilities depend on the browser. The native CLI and renderer sources remain in the workspace for the server edition, but they are not needed to serve `target/browser/`.
 
-The five presets are Default, GitHub, Academic, Corporate and Compact. Front matter overrides user theme settings. KaTeX math uses `$…$` and `$$…$$`; `cover: true` creates a title page from `title`, `author` and `date`. Enable diagram/image numbering in Settings.
+## GitHub Pages
 
-```markdown
----
-title: Project notes
-author: Ada
-cover: true
-theme: academic
-toc: true
----
-# Results
+The **Verify browser app** workflow builds and tests this branch on pushes and uploads a `browser-site` artifact. Pushing the branch does not publish the site automatically.
 
-Inline $e^{i\pi}+1=0$.
+To publish when ready:
 
-<!-- pagebreak -->
-```
+1. In the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
+2. Allow `browser-only` to deploy to the `github-pages` environment if that environment restricts deployment branches.
+3. Dispatch the existing workflow from this branch with publishing enabled:
 
-## CLI
+   ```sh
+   gh workflow run ci.yml --repo asce4s/mdpdf --ref browser-only -f deploy=true
+   ```
 
-```sh
-cargo run -p mdpdf-cli -- input.md -o out.pdf --theme academic
-cargo run -p mdpdf-cli -- input.md --set tables.style=grid --strict-diagrams --html out.html
-cargo run -p mdpdf-cli -- input.md --theme ./custom.mdpdf-theme.toml
-```
+The workflow runs all checks before its optional Pages deployment job. The project URL will be **https://asce4s.github.io/mdpdf/**. GitHub's [custom Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) describes the repository and deployment requirements.
 
-Without `-o`, output uses the input filename with a `.pdf` extension. `--set` accepts repeated typed dotted fields. Relative image paths resolve from the input file's directory; public HTTP(S) images are fetched and inlined before Chromium starts rendering. Exit code 2 indicates strict diagram errors; other failures use code 1. Strict failures preserve existing output files.
-
-Native binaries embed Mermaid, KaTeX and bundled fonts. They require Chromium, but do not need a source checkout, runtime CDN or frontend server.
-
-## Configuration
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CHROME_PATH` | executable discovery | Chromium executable |
-| `MDPDF_HOST` | `127.0.0.1` | Listen address |
-| `MDPDF_PORT` | `3000` | HTTP port |
-| `MDPDF_POOL_SIZE` | `4` | Reusable Chromium tabs, 1–32 |
-| `MDPDF_MAX_MD_BYTES` | `2097152` | Markdown limit, at most 2 MB |
-| `MDPDF_ASSET_DIR` | `target/uploads` | Session asset storage |
-| `MDPDF_ASSET_TTL_HOURS` | `24` | Asset expiration, cleanup hourly |
-| `LEPTOS_SITE_ROOT` | `target/site` | Built static files |
-| `MDPDF_CONTAINER_NO_SANDBOX` | unset | `1` enables explicit container-only sandbox override |
-
-Chromium's sandbox stays enabled for native runs. The Docker image runs as an unprivileged user, includes its pinned browser and enables the container override. Use a long-lived VM/container with sufficient memory for Chromium.
-
-```sh
-docker build -t mdpdf .
-docker run --rm -p 3000:3000 --shm-size=1g -v mdpdf-assets:/app/uploads mdpdf
-```
-
-`GET /healthz` reports browser readiness. Binary exports use `POST /api/export`; the actual Leptos preview server function is `POST /api/rpc/render_preview`. `/api/preview` is a JSON convenience alias. Both accept `markdown` and `theme`; export also accepts `filename` and `strict_diagrams`. Theme presets are available at `/api/themes`; multipart uploads use `/api/assets`.
-
-Raw HTML is sanitized. Preview has an opaque sandbox origin and nonce CSP. Chromium blocks external requests; the native preparation layer resolves approved images with DNS/IP validation, redirect validation, size caps and timeouts. Exports have a 30-second deadline and two concurrent requests per IP. Images are capped at 10 MB, fonts at 5 MB, session uploads at 100 (including at most 10 custom fonts), and document assets at 64 MB. Custom CSS disallows imports, external URLs and unsafe constructs.
+Other static hosts can publish `target/browser/` directly after running `npm run build`. No API URL, runtime environment variables, Docker container or secrets are needed by the app.
 
 ## Verify
 
@@ -101,24 +62,21 @@ cargo fmt --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo check -p mdpdf-core --target wasm32-unknown-unknown --locked
+npm run lint
 node --test crates/mdpdf-core/tests/bootstrap.test.cjs
 python3 scripts/check_assets.py
-node scripts/check_browser.cjs
-cargo test --workspace --locked -- --ignored --nocapture
-npm run test:e2e
+npx playwright install --with-deps chromium
+npm run test:browser
 ```
 
-For reproducible browser/PDF verification, install the exact browser selected by Playwright 1.64.1 (Chromium 156.0.8078.4, revision 1248), and use it for both the server and CLI:
+The browser suite serves only static files, tests both root and `/mdpdf/` hosting, and checks that the app makes no backend requests. It covers local images/fonts, reload persistence, theme and syntax imports, math, cover pages, print readiness, strict errors, offline HTML export, a real PDF print, scroll indexing and worker fallback. Poppler (`pdfinfo` and `pdftotext`) is needed for PDF verification, and Playwright's Chromium is a test dependency only.
+
+To measure your own Markdown samples against the static preview:
 
 ```sh
-npx playwright install --with-deps chromium
-export CHROME_PATH="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+node scripts/serve_browser.mjs --base /mdpdf/
+# In another terminal:
+node scripts/benchmark_preview.mjs markdown
 ```
 
-With the app running and CLI built, `node scripts/verify_delivery.mjs` checks CLI/web page counts and extracted text for all 14 required fixtures plus the math/cover fixture, compares their first PDF pages (plus the math equation page) to PNG goldens (≤0.5% changed pixels, channel threshold 16), and times a 30-page document with 20 diagrams. Deliberate visual changes require reviewing outputs and running `UPDATE_GOLDENS=1 node scripts/verify_delivery.mjs`. Results are written to `target/verification/`. Rasterization uses Poppler’s Cairo backend (`pdftocairo`); its Splash backend can omit individual Chromium Type 3 glyphs despite correct vector outlines.
-
-HTML snapshots live alongside core tests; regenerate intentional changes with `INSTA_UPDATE=always cargo test -p mdpdf-core --test pipeline`, review them, then rerun without update mode. Browser tests also check uploaded fonts, image isolation, strict errors, math, cover pages, local structural settings and scroll synchronization. CI runs Rust, browser, PDF, visual and container checks.
-
-With the app running, `node scripts/benchmark_preview.mjs markdown` exercises actual file drops for every `.md` file in that folder. It checks source preservation, diagram completion, iframe reuse and scroll geometry caching, and records content-update and complete-render times in `target/verification/preview-performance.json`. Set `MDPDF_BASE_URL` for another server or pass another sample directory.
-
-See [PROGRESS.md](PROGRESS.md) for actual verification results and environment limits, [DECISIONS.md](DECISIONS.md) for tradeoffs, and [SPEC.md](SPEC.md) for requirements. Vendored assets retain their MIT/OFL notices under `assets/`; container copies include these notices.
+Results are written to `target/verification/browser-performance.json`. The `markdown/` folder is a local test-input folder and is excluded from Git. See [PROGRESS.md](PROGRESS.md) for recorded verification and [DECISIONS.md](DECISIONS.md) for design history.

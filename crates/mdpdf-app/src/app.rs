@@ -22,19 +22,19 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 
 #[component]
 pub fn App() -> impl IntoView {
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    #[cfg(all(any(feature = "hydrate", feature = "browser"), target_arch = "wasm32"))]
     crate::client::install_bridge();
     view! {
         <div id="workspace" data-mobile-pane="editor">
             <header class="topbar">
-                <a class="brand" href="/" aria-label="mdpdf home"><span class="brand-mark">"m"<span>"↓"</span></span><span>"mdpdf"</span><span class="version-label">"WORKSPACE"</span></a>
+                <a class="brand" href="./" aria-label="mdpdf home"><span class="brand-mark">"m"<span>"↓"</span></span><span>"mdpdf"</span><span class="version-label">"WORKSPACE"</span></a>
                 <div class="file-identity"><span class="file-icon">"▤"</span><input id="filename" aria-label="Document filename" value="project-brief.md"/><span id="save-state" class="save-state">"Loading…"</span></div>
                 <nav class="top-actions" aria-label="Document actions">
                     <button id="open-file" class="button subtle"><span>"↥"</span>" Open"</button>
                     <button id="document-menu" class="icon-button" aria-label="More document actions">"•••"</button>
                     <span class="top-divider"></span>
                     <button id="ui-theme" class="icon-button" aria-label="Toggle interface color theme">"☼"</button>
-                    <button id="export-pdf" class="button primary"><span>"↓"</span>" Export PDF"</button>
+                    <button id="export-pdf" class="button primary" title="Open the browser print dialog and choose Save as PDF"><span>"⎙"</span>" Print / Save PDF"</button>
                 </nav>
             </header>
             <div class="workspace-toolbar">
@@ -50,8 +50,8 @@ pub fn App() -> impl IntoView {
                 </section>
                 <div id="editor-resizer" class="pane-resizer" role="separator" aria-label="Resize editor" aria-orientation="vertical" tabindex="0"></div>
                 <section class="preview-pane" aria-label="Document preview">
-                    <div class="pane-toolbar preview-toolbar"><div class="segmented" role="tablist" aria-label="Preview mode"><button id="live-mode" class="selected" role="tab" aria-selected="true">"Live preview"</button><button id="pdf-mode" role="tab" aria-selected="false">"PDF"<span class="exact-tag">"EXACT"</span></button></div><div class="preview-actions"><button id="refresh-pdf" class="icon-button hidden" aria-label="Refresh PDF">"↻"</button><button id="toggle-guides" class="icon-button enabled" aria-label="Toggle page guides" aria-pressed="true">"▱"</button><button id="toggle-sync" class="icon-button enabled" aria-label="Toggle scroll sync" aria-pressed="true">"⇅"</button><span class="small-divider"></span><button id="zoom-out" class="icon-button" aria-label="Zoom out">"−"</button><select id="zoom" aria-label="Preview zoom"><option value="fit">"Fit width"</option><option value="0.5">"50%"</option><option value="0.75">"75%"</option><option value="1">"100%"</option><option value="1.25">"125%"</option><option value="1.5">"150%"</option><option value="2">"200%"</option></select><button id="zoom-in" class="icon-button" aria-label="Zoom in">"+"</button></div></div>
-                    <div id="preview-scroll" class="preview-scroll"><div id="paper-stage"><iframe id="live-preview" title="Live print document" sandbox="allow-scripts"></iframe></div><iframe id="pdf-preview" title="Exact PDF preview" class="hidden"></iframe><div id="preview-empty" class="preview-empty"><span class="preview-empty-mark">"m↓"</span><p>"Preparing your page…"</p></div></div>
+                    <div class="pane-toolbar preview-toolbar"><div class="pane-label">"LIVE PREVIEW"</div><div class="preview-actions"><button id="toggle-guides" class="icon-button enabled" aria-label="Toggle page guides" aria-pressed="true">"▱"</button><button id="toggle-sync" class="icon-button enabled" aria-label="Toggle scroll sync" aria-pressed="true">"⇅"</button><span class="small-divider"></span><button id="zoom-out" class="icon-button" aria-label="Zoom out">"−"</button><select id="zoom" aria-label="Preview zoom"><option value="fit">"Fit width"</option><option value="0.5">"50%"</option><option value="0.75">"75%"</option><option value="1">"100%"</option><option value="1.25">"125%"</option><option value="1.5">"150%"</option><option value="2">"200%"</option></select><button id="zoom-in" class="icon-button" aria-label="Zoom in">"+"</button></div></div>
+                    <div id="preview-scroll" class="preview-scroll"><div id="paper-stage"><iframe id="live-preview" title="Live print document" sandbox="allow-scripts allow-modals"></iframe></div><div id="preview-empty" class="preview-empty"><span class="preview-empty-mark">"m↓"</span><p>"Preparing your page…"</p></div></div>
                     <div class="preview-bottom"><span id="render-status"><span class="status-dot"></span>"Starting renderer"</span><span id="page-status">"A4 · Portrait"</span></div>
                 </section>
                 <div id="settings-resizer" class="pane-resizer" role="separator" aria-label="Resize settings" aria-orientation="vertical" tabindex="0"></div>
@@ -60,8 +60,8 @@ pub fn App() -> impl IntoView {
                     <div class="settings-intro"><span class="eyebrow">"MAKE IT YOURS"</span><h1>"A little polish."</h1><p>"Fine-tune the page, from the first heading to the final footnote."</p></div>
                     <div id="settings-controls"></div>
                     <div class="theme-management"><button id="save-theme" class="button outlined">"+ Save as a theme"</button><div><button id="import-theme" class="text-button">"Import"</button><span>" / "</span><button id="export-theme" class="text-button">"Export theme"</button></div></div>
-                    <details class="settings-section advanced-section"><summary>"Export options"</summary><div class="settings-section-body"><label class="switch-row"><span>"Strict diagrams"</span><input id="strict-diagrams" type="checkbox" role="switch"/></label><p class="field-help">"Stop export if a diagram needs attention."</p><label class="switch-row"><span>"Auto-refresh exact PDF"</span><input id="auto-pdf" type="checkbox" role="switch"/></label><button id="upload-font" class="button outlined">"↥ Upload a font"</button><p class="field-help">"TTF, OTF or WOFF2 · Up to 5 MB"</p></div></details>
-                    <div class="settings-footer"><span class="status-dot"></span>"One document. One shared renderer."</div>
+                    <details class="settings-section advanced-section"><summary>"Export options"</summary><div class="settings-section-body"><label class="switch-row"><span>"Strict diagrams"</span><input id="strict-diagrams" type="checkbox" role="switch"/></label><p class="field-help">"Stop export if a diagram needs attention."</p><p class="field-help">"Final pagination appears in your browser’s print preview. Choose Save as PDF to save a file."</p><button id="upload-font" class="button outlined">"↥ Import a font"</button><p class="field-help">"TTF, OTF or WOFF2 · Up to 5 MB"</p></div></details>
+                    <div class="settings-footer"><span class="status-dot"></span>"Rendered locally. Saved in this browser."</div>
                 </aside>
             </main>
             <div id="diagnostics" class="diagnostics hidden" role="status"></div>

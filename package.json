@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "vendor": "node scripts/vendor_editor.mjs",
-    "test:e2e": "playwright test",
-    "dev": "bash scripts/dev.sh",
-    "lint": "node --check public/app.js && node --check public/preview-worker.js && node --check assets/vendor/mermaid/bootstrap.js && node --check assets/vendor/mermaid/frame-bridge.js"
+    "test:e2e": "npm run test:browser",
+    "dev": "npm run build && npm run preview",
+    "lint": "node --check public/app.js && node --check public/browser-entry.js && node --check public/browser-worker.js && node --check public/browser-renderer.js && node --check public/browser-assets.js && node --check public/settings.js && node --check assets/vendor/mermaid/bootstrap.js && node --check assets/vendor/mermaid/frame-bridge.js",
+    "build": "node scripts/build_browser.mjs",
+    "preview": "node scripts/serve_browser.mjs",
+    "test:browser": "playwright test -c playwright.browser.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-css": "6.3.1",
