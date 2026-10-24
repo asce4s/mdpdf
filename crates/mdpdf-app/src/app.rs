@@ -34,7 +34,7 @@ pub fn App() -> impl IntoView {
                     <button id="document-menu" class="icon-button" aria-label="More document actions">"•••"</button>
                     <span class="top-divider"></span>
                     <button id="ui-theme" class="icon-button" aria-label="Toggle interface color theme">"☼"</button>
-                    <button id="export-pdf" class="button primary" title="Open the browser print dialog and choose Save as PDF"><span>"⎙"</span>" Print / Save PDF"</button>
+                    <button id="export-pdf" class="button primary" title="Choose Save as PDF, then turn off Headers and footers under More settings"><span>"⎙"</span>" Print / Save PDF"</button>
                 </nav>
             </header>
             <div class="workspace-toolbar">
@@ -60,7 +60,7 @@ pub fn App() -> impl IntoView {
                     <div class="settings-intro"><span class="eyebrow">"MAKE IT YOURS"</span><h1>"A little polish."</h1><p>"Fine-tune the page, from the first heading to the final footnote."</p></div>
                     <div id="settings-controls"></div>
                     <div class="theme-management"><button id="save-theme" class="button outlined">"+ Save as a theme"</button><div><button id="import-theme" class="text-button">"Import"</button><span>" / "</span><button id="export-theme" class="text-button">"Export theme"</button></div></div>
-                    <details class="settings-section advanced-section"><summary>"Export options"</summary><div class="settings-section-body"><label class="switch-row"><span>"Strict diagrams"</span><input id="strict-diagrams" type="checkbox" role="switch"/></label><p class="field-help">"Stop export if a diagram needs attention."</p><p class="field-help">"Final pagination appears in your browser’s print preview. Choose Save as PDF to save a file."</p><button id="upload-font" class="button outlined">"↥ Import a font"</button><p class="field-help">"TTF, OTF or WOFF2 · Up to 5 MB"</p></div></details>
+                    <details class="settings-section advanced-section"><summary>"Export options"</summary><div class="settings-section-body"><label class="switch-row"><span>"Strict diagrams"</span><input id="strict-diagrams" type="checkbox" role="switch"/></label><p class="field-help">"Stop export if a diagram needs attention."</p><p class="field-help">"Final pagination appears in your browser’s print preview. Choose Save as PDF to save a file."</p><p class="field-help">"For clean pages, open More settings in the print dialog and turn off Headers and footers. This removes the browser’s document name, URL and date/time."</p><button id="upload-font" class="button outlined">"↥ Import a font"</button><p class="field-help">"TTF, OTF or WOFF2 · Up to 5 MB"</p></div></details>
                     <div class="settings-footer"><span class="status-dot"></span>"Rendered locally. Saved in this browser."</div>
                 </aside>
             </main>
