@@ -69,6 +69,25 @@ Without `-o`, output uses the input filename with a `.pdf` extension. `--set` ac
 
 Native binaries embed Mermaid, KaTeX and bundled fonts. They require Chromium, but do not need a source checkout, runtime CDN or frontend server.
 
+## Desktop
+
+The Linux desktop app is a Tauri window around this same workspace. PDF export still uses system Chromium. WebKit draws the window. Exact PDF mode keeps the browser viewer when `navigator.pdfViewerEnabled` is set, and uses the vendored PDF.js page when it is not. Export, Markdown, HTML and theme downloads use the same links as the web app; WebKit saves them. The web server on port 3000 and the CLI are unchanged.
+
+Arch packages, plus the Chromium requirement above:
+
+```sh
+sudo pacman -S --needed webkit2gtk-4.1 gtk3 libsoup3 librsvg base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3
+```
+
+Build the site, then open the window. Run both from the workspace root so `target/site` resolves. Uploads go to `$XDG_DATA_HOME/mdpdf/uploads`, or `~/.local/share/mdpdf/uploads`, unless `MDPDF_ASSET_DIR` is set. The window binds `127.0.0.1` on a free port and uses one Chromium tab unless `MDPDF_POOL_SIZE` is set.
+
+```sh
+cargo leptos build
+cargo run -p mdpdf-desktop
+```
+
+`just desktop` does the same. Set `CHROME_PATH` when Chromium is not on `PATH`. If Chromium fails to launch, the window stays closed and the error is shown.
+
 ## Configuration
 
 | Variable | Default | Purpose |

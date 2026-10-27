@@ -1,0 +1,19 @@
+[package]
+name = "mdpdf-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Linux desktop window for mdpdf"
+
+[dependencies]
+mdpdf-app = { path = "../mdpdf-app", default-features = false, features = ["ssr"] }
+rfd = "=0.17.2"
+tauri = "=2.12.5"
+tokio.workspace = true
+
+[build-dependencies]
+tauri-build = "=2.7.4"
+
+[lints]
+workspace = true

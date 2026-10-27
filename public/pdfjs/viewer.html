@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>PDF</title>
+  <style>
+    html, body { margin: 0; background: #444; color: #eee; }
+    body { font: 14px Inter, system-ui, sans-serif; }
+    canvas { display: block; margin: 12px auto; background: white; box-shadow: 0 2px 8px #0006; }
+    #status { padding: 24px; }
+  </style>
+</head>
+<body>
+  <div id="status">Loading PDF…</div>
+  <div id="pages"></div>
+  <script type="module">
+    import { getDocument, GlobalWorkerOptions } from '/pdfjs/pdf.min.mjs';
+    GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
+    const status = document.getElementById('status');
+    const pages = document.getElementById('pages');
+    let generation = 0;
+    async function render() {
+      const current = ++generation;
+      const file = decodeURIComponent(location.hash.slice(1));
+      pages.replaceChildren();
+      if (!file) { status.textContent = 'No PDF loaded.'; return; }
+      status.textContent = 'Loading PDF…';
+      try {
+        const pdf = await getDocument({
+          url: file,
+          wasmUrl: '/pdfjs/wasm/',
+          standardFontDataUrl: '/pdfjs/standard_fonts/',
+        }).promise;
+        if (current !== generation) { await pdf.destroy(); return; }
+        status.textContent = '';
+        for (let number = 1; number <= pdf.numPages; number += 1) {
+          if (current !== generation) return;
+          const page = await pdf.getPage(number);
+          const base = page.getViewport({ scale: 1 });
+          const width = Math.max(document.documentElement.clientWidth - 48, 320);
+          const scale = Math.min(2, width / base.width);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          pages.append(canvas);
+          await page.render({ canvasContext: context, viewport }).promise;
+        }
+      } catch (error) {
+        if (current === generation) status.textContent = error && error.message ? error.message : 'Could not display this PDF.';
+      }
+    }
+    window.addEventListener('hashchange', () => { render(); });
+    render();
+  </script>
+</body>
+</html>

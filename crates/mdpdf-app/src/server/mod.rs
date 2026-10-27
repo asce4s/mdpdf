@@ -19,9 +19,14 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
+    path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::{
+    sync::{Mutex, Semaphore},
+    task::JoinHandle,
+};
 use tower_http::{compression::CompressionLayer, services::ServeDir};
 
 #[derive(Clone)]
@@ -206,60 +211,236 @@ pub fn router(state: AppState, options: LeptosOptions, site_root: String) -> Rou
         .with_state(state)
 }
 
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let config = get_configuration(None)?;
-    let mut options = config.leptos_options;
-    let port: u16 = std::env::var("MDPDF_PORT")
-        .unwrap_or_else(|_| "3000".into())
-        .parse()?;
-    let host = std::env::var("MDPDF_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    options.site_addr = format!("{host}:{port}").parse()?;
-    let site_root = std::env::var("LEPTOS_SITE_ROOT").unwrap_or_else(|_| "target/site".into());
-    let asset_dir = std::env::var("MDPDF_ASSET_DIR").unwrap_or_else(|_| "target/uploads".into());
-    let max_markdown = std::env::var("MDPDF_MAX_MD_BYTES")
-        .unwrap_or_else(|_| "2097152".into())
+pub type ServerError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Settings for one Axum process. The web binary reads the environment; the desktop shell overrides the bind address and pool.
+pub struct ServerOptions {
+    pub bind: SocketAddr,
+    pub site_root: String,
+    pub asset_dir: PathBuf,
+    pub max_markdown: usize,
+    pub pool: PoolConfig,
+    pub asset_ttl: Duration,
+    /// Skip the cargo-leptos reload socket. The desktop window sets this.
+    pub production_shell: bool,
+}
+
+struct SharedOptions {
+    site_root: String,
+    asset_dir: PathBuf,
+    max_markdown: usize,
+    pool: PoolConfig,
+    asset_ttl: Duration,
+}
+
+fn env_or(key: &str, default: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+fn shared_from_env() -> Result<SharedOptions, ServerError> {
+    let max_markdown = env_or("MDPDF_MAX_MD_BYTES", "2097152")
         .parse::<usize>()?
         .min(2 * 1024 * 1024);
-    let pool = BrowserPool::new(PoolConfig::from_env()?).await?;
-    let assets = Arc::new(assets::AssetStore::new(asset_dir.into())?);
-    let cleanup = assets.clone();
-    tokio::spawn(async move {
-        let hours = std::env::var("MDPDF_ASSET_TTL_HOURS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(24)
-            .max(1);
+    let hours = std::env::var("MDPDF_ASSET_TTL_HOURS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(24)
+        .max(1);
+    Ok(SharedOptions {
+        site_root: env_or("LEPTOS_SITE_ROOT", "target/site"),
+        asset_dir: PathBuf::from(env_or("MDPDF_ASSET_DIR", "target/uploads")),
+        max_markdown,
+        pool: PoolConfig::from_env()?,
+        asset_ttl: Duration::from_secs(hours * 3600),
+    })
+}
+
+impl ServerOptions {
+    /// Web-server defaults: `127.0.0.1:3000` unless `MDPDF_HOST` / `MDPDF_PORT` are set, pool size 4.
+    pub fn from_env() -> Result<Self, ServerError> {
+        let port: u16 = env_or("MDPDF_PORT", "3000").parse()?;
+        let host = env_or("MDPDF_HOST", "127.0.0.1");
+        let shared = shared_from_env()?;
+        Ok(Self {
+            bind: format!("{host}:{port}").parse()?,
+            site_root: shared.site_root,
+            asset_dir: shared.asset_dir,
+            max_markdown: shared.max_markdown,
+            pool: shared.pool,
+            asset_ttl: shared.asset_ttl,
+            production_shell: false,
+        })
+    }
+
+    /// Desktop defaults: ephemeral loopback port, one Chromium tab unless `MDPDF_POOL_SIZE` is set.
+    pub fn for_desktop() -> Result<Self, ServerError> {
+        let pool_size_configured = std::env::var("MDPDF_POOL_SIZE").is_ok();
+        let asset_dir_configured = std::env::var("MDPDF_ASSET_DIR").is_ok();
+        let shared = shared_from_env()?;
+        let mut pool = shared.pool;
+        apply_desktop_pool(&mut pool, pool_size_configured);
+        let asset_dir = if asset_dir_configured {
+            shared.asset_dir
+        } else {
+            uploads_dir(
+                std::env::var_os("XDG_DATA_HOME").as_deref().map(Path::new),
+                std::env::var_os("HOME").as_deref().map(Path::new),
+            )
+        };
+        Ok(Self {
+            bind: SocketAddr::from(([127, 0, 0, 1], 0)),
+            site_root: shared.site_root,
+            asset_dir,
+            max_markdown: shared.max_markdown,
+            pool,
+            asset_ttl: shared.asset_ttl,
+            production_shell: true,
+        })
+    }
+}
+
+fn apply_desktop_pool(pool: &mut PoolConfig, pool_size_configured: bool) {
+    if !pool_size_configured {
+        pool.size = 1;
+    }
+}
+
+pub fn uploads_dir(xdg_data_home: Option<&Path>, home: Option<&Path>) -> PathBuf {
+    let base = xdg_data_home
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .or_else(|| home.map(|path| path.join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from(".local/share"));
+    base.join("mdpdf").join("uploads")
+}
+
+pub struct RunningServer {
+    pub addr: SocketAddr,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+    serve: JoinHandle<Result<(), std::io::Error>>,
+    cleanup: JoinHandle<()>,
+    pool: BrowserPool,
+}
+
+impl RunningServer {
+    pub async fn shutdown(self) -> Result<(), ServerError> {
+        let _ = self.shutdown.send(());
+        let serve_result = self.serve.await;
+        self.cleanup.abort();
+        self.pool.close().await;
+        serve_result??;
+        Ok(())
+    }
+}
+
+pub async fn start(config: ServerOptions) -> Result<RunningServer, ServerError> {
+    let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let mut options = get_configuration(Some(manifest))?.leptos_options;
+    if config.production_shell {
+        options.env = leptos::config::Env::PROD;
+    }
+    let listener = tokio::net::TcpListener::bind(config.bind).await?;
+    let addr = listener.local_addr()?;
+    options.site_addr = addr;
+    let pool = BrowserPool::new(config.pool).await?;
+    let assets = Arc::new(assets::AssetStore::new(config.asset_dir)?);
+    let cleanup_store = assets.clone();
+    let asset_ttl = config.asset_ttl;
+    let cleanup = tokio::spawn(async move {
         loop {
-            let _ = cleanup.cleanup(std::time::Duration::from_secs(hours * 3600));
-            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let _ = cleanup_store.cleanup(asset_ttl);
+            tokio::time::sleep(Duration::from_secs(3600)).await;
         }
     });
     let state = AppState {
         pool: pool.clone(),
         assets,
-        max_markdown,
+        max_markdown: config.max_markdown,
         rates: Arc::new(Mutex::new(HashMap::new())),
         preview_slots: Arc::new(Semaphore::new(12)),
     };
-    let app = router(state, options.clone(), site_root);
-    let listener = tokio::net::TcpListener::bind(options.site_addr).await?;
-    eprintln!("mdpdf is ready at http://{}", options.site_addr);
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(async {
-        #[cfg(unix)]
-        {
-            let mut terminate =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM handler");
-            tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
-        }
-        #[cfg(not(unix))]
-        let _ = tokio::signal::ctrl_c().await;
+    let app = router(state, options, config.site_root);
+    let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
+    let serve = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        })
+        .await
+    });
+    Ok(RunningServer {
+        addr,
+        shutdown,
+        serve,
+        cleanup,
+        pool,
     })
-    .await?;
-    pool.close().await;
-    Ok(())
+}
+
+pub async fn run() -> Result<(), ServerError> {
+    let server = start(ServerOptions::from_env()?).await?;
+    eprintln!("mdpdf is ready at http://{}", server.addr);
+    wait_for_shutdown_signal().await;
+    server.shutdown().await
+}
+
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = terminate.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uploads_follow_xdg_then_home() {
+        assert_eq!(
+            uploads_dir(Some(Path::new("/xdg")), Some(Path::new("/home/a"))),
+            PathBuf::from("/xdg/mdpdf/uploads")
+        );
+        assert_eq!(
+            uploads_dir(Some(Path::new("")), Some(Path::new("/home/a"))),
+            PathBuf::from("/home/a/.local/share/mdpdf/uploads")
+        );
+        assert_eq!(
+            uploads_dir(None, Some(Path::new("/home/a"))),
+            PathBuf::from("/home/a/.local/share/mdpdf/uploads")
+        );
+        assert_eq!(
+            uploads_dir(None, None),
+            PathBuf::from(".local/share/mdpdf/uploads")
+        );
+    }
+
+    #[test]
+    fn desktop_pool_defaults_to_one_tab() {
+        let mut pool = PoolConfig::default();
+        assert_eq!(pool.size, 4);
+        apply_desktop_pool(&mut pool, false);
+        assert_eq!(pool.size, 1);
+        pool.size = 4;
+        apply_desktop_pool(&mut pool, true);
+        assert_eq!(pool.size, 4);
+    }
+
+    #[test]
+    fn app_manifest_loads_output_name() {
+        let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let config = get_configuration(Some(manifest)).unwrap();
+        assert_eq!(config.leptos_options.output_name.as_ref(), "mdpdf-app");
+    }
 }

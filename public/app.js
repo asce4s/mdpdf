@@ -296,7 +296,7 @@ async function mount() {
       if(!response.ok)throw await errorResponse(response);
       const blob=await response.blob();
       if(asDownload){download(blob,filename('pdf'));toast('Your PDF is ready');}
-      else {if(state.pdfUrl)URL.revokeObjectURL(state.pdfUrl);state.pdfUrl=URL.createObjectURL(blob);$('pdf-preview').src=state.pdfUrl;}
+      else {if(state.pdfUrl)URL.revokeObjectURL(state.pdfUrl);state.pdfUrl=URL.createObjectURL(blob);$('pdf-preview').src=navigator.pdfViewerEnabled===false?'/pdfjs/viewer.html#'+encodeURIComponent(state.pdfUrl):state.pdfUrl;}
       status(`PDF ready · ${((performance.now()-start)/1000).toFixed(1)}s`);
     }catch(error){if(error.name!=='AbortError'){if(error.diagnostics)diagnostics(error.diagnostics);toast(error.message);status('PDF needs attention');}}
     finally{$('export-pdf').disabled=false;$('refresh-pdf').classList.remove('spinner');}

@@ -25,3 +25,7 @@ docker:
 
 run-container:
     docker run --rm -p 3000:3000 --shm-size=1g -v mdpdf-assets:/app/uploads mdpdf
+
+desktop:
+    cargo leptos build
+    cargo run -p mdpdf-desktop
