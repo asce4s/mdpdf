@@ -92,7 +92,14 @@ fn ensure_site(site_root: &Path) -> Result<(), String> {
 }
 
 fn allow_navigation(url: &str, port: u16) -> bool {
-    if url == "about:blank" || url.starts_with("blob:") || url.starts_with("webkit-pdfjs-viewer:") {
+    // The live preview is a sandboxed srcdoc iframe. WebKit reports that load as
+    // about:srcdoc, and its built-in PDF viewer uses a private scheme.
+    if url == "about:blank"
+        || url.starts_with("about:blank#")
+        || url.starts_with("about:srcdoc")
+        || url.starts_with("blob:")
+        || url.starts_with("webkit-pdfjs-viewer:")
+    {
         return true;
     }
     let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
@@ -164,6 +171,8 @@ mod tests {
             43123
         ));
         assert!(allow_navigation("about:blank", 43123));
+        assert!(allow_navigation("about:srcdoc", 43123));
+        assert!(!allow_navigation("about:config", 43123));
         assert!(!allow_navigation("http://127.0.0.1:3000/", 43123));
         assert!(!allow_navigation("https://127.0.0.1:43123/", 43123));
         assert!(!allow_navigation("http://localhost:43123/", 43123));
