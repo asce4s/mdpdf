@@ -7,8 +7,10 @@ license.workspace = true
 description = "Linux desktop window for mdpdf"
 
 [dependencies]
+base64.workspace = true
 mdpdf-app = { path = "../mdpdf-app", default-features = false, features = ["ssr"] }
 rfd = "=0.17.2"
+serde_json.workspace = true
 tauri = "=2.12.5"
 tokio.workspace = true
 

@@ -71,7 +71,7 @@ Native binaries embed Mermaid, KaTeX and bundled fonts. They require Chromium, b
 
 ## Desktop
 
-The Linux desktop app is a Tauri window around this same workspace. PDF export still uses system Chromium. WebKit draws the window. Dropped Markdown and images stay with the page: the window leaves GTK file drops to WebKit, and the page accepts the `text/uri-list` payload WebKit reports for those drops. Exact PDF mode keeps the browser viewer when `navigator.pdfViewerEnabled` is set, and uses the vendored PDF.js page when it is not. Export, Markdown, HTML and theme downloads use the same links as the web app; WebKit saves them. The web server on port 3000 and the CLI are unchanged.
+The Linux desktop app is a Tauri window around this same workspace. PDF export still uses system Chromium. WebKit draws the window. A dropped Markdown file is read by the window and opened in the editor. A dropped image is uploaded. WebKit would otherwise insert only the file path. Exact PDF mode keeps the browser viewer when `navigator.pdfViewerEnabled` is set, and uses the vendored PDF.js page when it is not. Export, Markdown, HTML and theme downloads use the same links as the web app; WebKit saves them. The web server on port 3000 and the CLI are unchanged.
 
 Arch packages, plus the Chromium requirement above:
 

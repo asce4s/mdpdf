@@ -347,6 +347,21 @@ async function mount() {
     if (files.length) return files;
     return [...(dataTransfer?.items || [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
   };
+  window.mdpdf.loadDropped = async entries => {
+    for (const entry of entries || []) {
+      try {
+        if (entry.error) { toast(entry.error); continue; }
+        if (typeof entry.text === 'string') await openMarkdown(new File([entry.text], entry.name || 'dropped.md', {type:'text/markdown'}));
+        else if (typeof entry.base64 === 'string') {
+          const binary = atob(entry.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+          await image(new File([bytes], entry.name || 'dropped', {type: entry.mime || 'application/octet-stream'}));
+        }
+      } catch (error) { toast(error.message); }
+    }
+  };
+  if (window.mdpdfPendingDrop) { const pending = window.mdpdfPendingDrop; window.mdpdfPendingDrop = null; window.mdpdf.loadDropped(pending); }
   const acceptFileDrag = event => {
     if (!fileDrag(event.dataTransfer)) return;
     event.preventDefault();
@@ -356,10 +371,9 @@ async function mount() {
   document.addEventListener('dragover', acceptFileDrag, true);
   document.addEventListener('drop', async event => {
     if (!fileDrag(event.dataTransfer)) return;
-    const files = droppedFiles(event.dataTransfer);
     event.preventDefault();
-    if (!files.length) return;
     event.stopPropagation();
+    const files = droppedFiles(event.dataTransfer);
     for (const file of files) {
       if (/\.(md|markdown|txt)$/i.test(file.name)) await openMarkdown(file);
       else await image(file);
