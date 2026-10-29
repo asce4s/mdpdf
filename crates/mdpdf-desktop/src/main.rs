@@ -137,6 +137,9 @@ fn main() {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
                 .title("mdpdf")
                 .inner_size(1400.0, 900.0)
+                // Tauri's handler finishes the GTK drop itself, so the page never
+                // sees the Markdown or image files it already knows how to open.
+                .disable_drag_drop_handler()
                 .on_navigation(move |target| allow_navigation(target.as_str(), port))
                 .build()?;
             Ok(())

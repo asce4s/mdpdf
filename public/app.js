@@ -330,8 +330,41 @@ async function mount() {
   $('image-file').onchange=async()=>{const file=$('image-file').files[0];if(file)await image(file);$('image-file').value='';};
   async function registerFont(asset){try{const response=await fetch(asset.url);if(!response.ok)throw new Error();const bytes=await response.arrayBuffer();const face=await new FontFace('assetfont-'+asset.id,bytes).load();document.fonts.add(face);asset.dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(new Blob([bytes],{type:asset.mime}));});}catch{toast(`Could not load font: ${asset.name}`);}}
   $('upload-font').onclick=()=>$('font-file').click();$('font-file').onchange=async()=>{const file=$('font-file').files[0];if(!file)return;try{const probe=new FontFace('mdpdf-upload-check',await file.arrayBuffer());await probe.load();const asset=await upload(file);if(asset.kind!=='font')throw new Error('Choose a TTF, OTF or WOFF2 font');await registerFont(asset);if(!state.fonts.some(font=>font.id===asset.id))state.fonts.push(asset);rebuildSettings();changeTheme('typography.body_font','assetfont-'+asset.id);rebuildSettings();renderPreview();toast('Font uploaded and applied to body text');}catch(error){toast(error.message);}finally{$('font-file').value='';}};
-  document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
-  document.addEventListener('drop',async event=>{const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;event.preventDefault();event.stopPropagation();for(const file of files){if(/\.(md|markdown|txt)$/i.test(file.name))await openMarkdown(file);else await image(file);}},{capture:true});
+  const dragTypeNames = types => {
+    if (!types) return [];
+    if (typeof types.includes === 'function') return types;
+    const names = [];
+    for (let index = 0; index < types.length; index++) names.push(types[index] ?? types.item?.(index));
+    return names;
+  };
+  const fileDrag = dataTransfer => {
+    const names = dragTypeNames(dataTransfer?.types);
+    const has = name => typeof names.includes === 'function' ? names.includes(name) : false;
+    return has('Files') || has('text/uri-list');
+  };
+  const droppedFiles = dataTransfer => {
+    const files = [...(dataTransfer?.files || [])];
+    if (files.length) return files;
+    return [...(dataTransfer?.items || [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
+  };
+  const acceptFileDrag = event => {
+    if (!fileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  document.addEventListener('dragenter', acceptFileDrag, true);
+  document.addEventListener('dragover', acceptFileDrag, true);
+  document.addEventListener('drop', async event => {
+    if (!fileDrag(event.dataTransfer)) return;
+    const files = droppedFiles(event.dataTransfer);
+    event.preventDefault();
+    if (!files.length) return;
+    event.stopPropagation();
+    for (const file of files) {
+      if (/\.(md|markdown|txt)$/i.test(file.name)) await openMarkdown(file);
+      else await image(file);
+    }
+  }, {capture:true});
   $('editor').addEventListener('paste',event=>{const files=[...(event.clipboardData?.files||[])];if(files.length){event.preventDefault();for(const file of files)image(file);}});
   function resizer(id,variable,min,max,invert){const node=$(id);node.onpointerdown=event=>{node.setPointerCapture(event.pointerId);const origin=event.clientX;const initial=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;const move=event=>{$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,initial+(event.clientX-origin)*(invert?-1:1)))+'px');resizePaper();};node.onpointermove=move;node.onpointerup=()=>{node.onpointermove=null;};};node.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const current=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,current+(event.key==='ArrowLeft'?-20:20)*(invert?-1:1)))+'px');resizePaper();}};}
   resizer('editor-resizer','--editor-width',260,650,false);resizer('settings-resizer','--settings-width',245,440,true);
