@@ -119,6 +119,32 @@ async function mount() {
   }
   function scheduleSave() { $('save-state').textContent = 'Saving…'; clearTimeout(saveTimer); saveTimer = setTimeout(save,2000); }
   function status(text,busy=false) { $('render-status').textContent = text; $('render-status').classList.toggle('spinner',busy); }
+  const previewLoading = { file:false, pdf:false };
+  let fileLoadRevision = 0, fileCoverArmed = false, pdfEpoch = 0;
+  function syncPreviewLoading() {
+    const show = (previewLoading.file && state.mode === 'live') || (previewLoading.pdf && state.mode === 'pdf');
+    $('preview-loading').classList.toggle('hidden', !show);
+    $('preview-scroll').setAttribute('aria-busy', String(show));
+  }
+  function beginDocumentSwap() {
+    previewLoading.file = true;
+    fileCoverArmed = false;
+    if (state.mode === 'pdf') { pdfController?.abort(); previewLoading.pdf = true; pdfEpoch++; $('pdf-preview').dataset.token = ''; }
+    syncPreviewLoading();
+  }
+  function commitDocumentSwap() {
+    fileLoadRevision = state.generation;
+    fileCoverArmed = true;
+  }
+  function clearFileCover() {
+    previewLoading.file = false;
+    fileCoverArmed = false;
+    syncPreviewLoading();
+  }
+  function refreshVisiblePdf() {
+    clearTimeout(pdfTimer);
+    if (state.mode === 'pdf') exactPdf(false);
+  }
   function diagnostics(items) {
     state.diagnostics = items;
     const panel = $('diagnostics'); panel.replaceChildren(); panel.classList.toggle('hidden',items.length === 0);
@@ -220,7 +246,7 @@ async function mount() {
       const html = nonce ? result.html.replace('</head>',`<script nonce="${nonce}" id="mdpdf-cached-svgs" type="application/json">${cache}</script></head>`) : result.html;
       $('live-preview').srcdoc = html;
       compileTheme();
-    } catch(error) { if (error.name !== 'AbortError') { status('Preview needs attention'); toast(error.message); } }
+    } catch(error) { if (error.name !== 'AbortError') { status('Preview needs attention'); toast(error.message); if (previewLoading.file && fileCoverArmed && generation === state.generation) clearFileCover(); } }
   }
   $('live-preview').addEventListener('load',() => { if (state.pendingStyle) post({type:'style',...state.pendingStyle,revision:state.revision}); post({type:'guides',enabled:state.guides}); });
   window.addEventListener('message',event => {
@@ -238,6 +264,7 @@ async function mount() {
       for (const [key,svg] of message.cache || []) state.cache.set(key,svg);
       while (state.cache.size > 200) state.cache.delete(state.cache.keys().next().value);
       $('preview-empty').classList.add('hidden');
+      if (previewLoading.file && fileCoverArmed && message.revision > fileLoadRevision) clearFileCover();
       const count = (state.markdown.match(/^```mermaid/gm) || []).length;
       status(`${message.diagnostics.length ? 'Needs attention':'Preview ready'}${count ? ` · ${count} diagram${count === 1 ? '':'s'}`:''}`);
       window.mdpdf.ready = true; window.mdpdf.lastRenderMs = performance.now() - (state.requestStarted || performance.now());
@@ -288,21 +315,24 @@ async function mount() {
   $('theme-file').onchange=async()=>{const file=$('theme-file').files[0];if(!file)return;try{if(file.size>50*1024)throw new Error('Theme exceeds 50 KB');state.theme=core('import',await file.text());state.preset='default';presets();rebuildSettings();compileTheme(true);scheduleSave();toast('Theme imported');}catch(error){toast(error.message);}finally{$('theme-file').value='';}};
   const filename = extension => ($('filename').value || 'document.md').replace(/\.(md|markdown|pdf)$/i,'')+'.'+extension;
   async function exactPdf(asDownload) {
+    let token = 0;
     if (asDownload) $('export-pdf').disabled=true;
-    else { pdfController?.abort();pdfController=new AbortController();$('refresh-pdf').classList.add('spinner'); }
+    else { pdfController?.abort();pdfController=new AbortController();$('refresh-pdf').classList.add('spinner'); token=++pdfEpoch; previewLoading.pdf=true; syncPreviewLoading(); }
     const start=performance.now();status('Rendering PDF',true);
     try {
       const response=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown:state.markdown,theme:state.theme,filename:filename('pdf'),strict_diagrams:$('strict-diagrams').checked}),...(asDownload?{}:{signal:pdfController.signal})});
       if(!response.ok)throw await errorResponse(response);
       const blob=await response.blob();
+      if(!asDownload && token!==pdfEpoch) return;
       if(asDownload){download(blob,filename('pdf'));toast('Your PDF is ready');}
-      else {if(state.pdfUrl)URL.revokeObjectURL(state.pdfUrl);state.pdfUrl=URL.createObjectURL(blob);$('pdf-preview').src=state.pdfUrl;}
+      else {if(state.pdfUrl)URL.revokeObjectURL(state.pdfUrl);state.pdfUrl=URL.createObjectURL(blob);$('pdf-preview').dataset.token=String(token);$('pdf-preview').src=navigator.pdfViewerEnabled===false?'/pdfjs/viewer.html#'+encodeURIComponent(state.pdfUrl):state.pdfUrl;}
       status(`PDF ready · ${((performance.now()-start)/1000).toFixed(1)}s`);
-    }catch(error){if(error.name!=='AbortError'){if(error.diagnostics)diagnostics(error.diagnostics);toast(error.message);status('PDF needs attention');}}
-    finally{$('export-pdf').disabled=false;$('refresh-pdf').classList.remove('spinner');}
+    }catch(error){if(error.name!=='AbortError'){if(error.diagnostics)diagnostics(error.diagnostics);toast(error.message);status('PDF needs attention');if(token&&token===pdfEpoch){previewLoading.pdf=false;syncPreviewLoading();}}}
+    finally{if(asDownload||token===pdfEpoch){$('export-pdf').disabled=false;$('refresh-pdf').classList.remove('spinner');}}
   }
+  $('pdf-preview').addEventListener('load',() => { const token=Number($('pdf-preview').dataset.token||0); if(token&&token===pdfEpoch&&previewLoading.pdf){previewLoading.pdf=false;syncPreviewLoading();} });
   $('export-pdf').onclick=()=>exactPdf(true);$('refresh-pdf').onclick=()=>exactPdf(false);
-  function mode(value){state.mode=value;$('live-mode').classList.toggle('selected',value==='live');$('pdf-mode').classList.toggle('selected',value==='pdf');$('live-mode').setAttribute('aria-selected',String(value==='live'));$('pdf-mode').setAttribute('aria-selected',String(value==='pdf'));$('paper-stage').classList.toggle('hidden',value==='pdf');$('pdf-preview').classList.toggle('hidden',value!=='pdf');$('refresh-pdf').classList.toggle('hidden',value!=='pdf');if(value==='pdf')exactPdf(false);else resizePaper();}
+  function mode(value){state.mode=value;$('live-mode').classList.toggle('selected',value==='live');$('pdf-mode').classList.toggle('selected',value==='pdf');$('live-mode').setAttribute('aria-selected',String(value==='live'));$('pdf-mode').setAttribute('aria-selected',String(value==='pdf'));$('paper-stage').classList.toggle('hidden',value==='pdf');$('pdf-preview').classList.toggle('hidden',value!=='pdf');$('refresh-pdf').classList.toggle('hidden',value!=='pdf');if(value==='pdf')exactPdf(false);else{resizePaper();syncPreviewLoading();}}
   $('live-mode').onclick=()=>mode('live');$('pdf-mode').onclick=()=>mode('pdf');
   $('zoom').onchange=()=>{state.zoom=$('zoom').value;resizePaper();scheduleSave();};
   const zoomStep=delta=>{const next=Math.max(.5,Math.min(2,Math.round((state.scale+delta)*100)/100));state.zoom=String(next);let option=[...$('zoom').options].find(o=>o.value===state.zoom);if(!option){option=new Option(`${Math.round(next*100)}%`,state.zoom);$('zoom').add(option);}$('zoom').value=state.zoom;resizePaper();scheduleSave();};
@@ -317,11 +347,11 @@ async function mount() {
   $('document-menu').onclick=()=>{$('document-actions').classList.toggle('hidden');};
   document.addEventListener('click',event=>{if(!event.target.closest('#document-actions,#document-menu'))$('document-actions').classList.add('hidden');});
   const replaceDocument=md=>{muteEditor=performance.now()+250;editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:md},selection:{anchor:0},effects:EditorView.scrollIntoView(0,{y:'start'})});$('preview-scroll').scrollTop=0;};
-  $('new-document').onclick=()=>{try{localStorage.setItem('mdpdf:previous-draft',state.markdown);}catch{}replaceDocument('');$('filename').value='untitled.md';state.cache.clear();$('document-actions').classList.add('hidden');editor.focus();};
+  $('new-document').onclick=()=>{const previous=state.markdown;try{localStorage.setItem('mdpdf:previous-draft',previous);}catch{}if(previous){beginDocumentSwap();commitDocumentSwap();}replaceDocument('');if(previous)refreshVisiblePdf();$('filename').value='untitled.md';state.cache.clear();$('document-actions').classList.add('hidden');editor.focus();};
   $('download-md').onclick=()=>{download(new Blob([state.markdown],{type:'text/markdown'}),filename('md'));$('document-actions').classList.add('hidden');};
   $('download-html').onclick=async()=>{try{const response=await fetch('/api/rpc/render_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown:state.markdown,theme:state.theme})});if(!response.ok)throw await errorResponse(response);const result=await response.json();download(new Blob([result.html],{type:'text/html'}),filename('html'));}catch(error){toast(error.message);}$('document-actions').classList.add('hidden');};
   let fileGeneration=0;
-  async function openMarkdown(file){if(file.size>2*1024*1024){toast('Markdown exceeds 2 MB');return;}const current=++fileGeneration;const text=await file.text();if(current!==fileGeneration)return;replaceDocument(text);$('filename').value=file.name;scheduleSave();await renderPreview();}
+  async function openMarkdown(file){if(file.size>2*1024*1024){toast('Markdown exceeds 2 MB');return;}const current=++fileGeneration;beginDocumentSwap();let text;try{text=await file.text();}catch(error){if(current===fileGeneration){previewLoading.file=false;fileCoverArmed=false;previewLoading.pdf=false;syncPreviewLoading();toast(error.message);}return;}if(current!==fileGeneration)return;commitDocumentSwap();replaceDocument(text);refreshVisiblePdf();$('filename').value=file.name;scheduleSave();await renderPreview();}
   $('open-file').onclick=()=>$('markdown-file').click();$('markdown-file').onchange=async()=>{const file=$('markdown-file').files[0];if(file)await openMarkdown(file);$('markdown-file').value='';};
   function insert(value){const range=editor.state.selection.main;editor.dispatch({changes:{from:range.from,to:range.to,insert:value},selection:{anchor:range.from+value.length}});editor.focus();}
   $('insert-snippet').onchange=()=>{const key=$('insert-snippet').value;$('insert-snippet').value='';if(key==='image')$('image-file').click();else if(SNIPPETS[key])insert(SNIPPETS[key]);};
@@ -330,8 +360,55 @@ async function mount() {
   $('image-file').onchange=async()=>{const file=$('image-file').files[0];if(file)await image(file);$('image-file').value='';};
   async function registerFont(asset){try{const response=await fetch(asset.url);if(!response.ok)throw new Error();const bytes=await response.arrayBuffer();const face=await new FontFace('assetfont-'+asset.id,bytes).load();document.fonts.add(face);asset.dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(new Blob([bytes],{type:asset.mime}));});}catch{toast(`Could not load font: ${asset.name}`);}}
   $('upload-font').onclick=()=>$('font-file').click();$('font-file').onchange=async()=>{const file=$('font-file').files[0];if(!file)return;try{const probe=new FontFace('mdpdf-upload-check',await file.arrayBuffer());await probe.load();const asset=await upload(file);if(asset.kind!=='font')throw new Error('Choose a TTF, OTF or WOFF2 font');await registerFont(asset);if(!state.fonts.some(font=>font.id===asset.id))state.fonts.push(asset);rebuildSettings();changeTheme('typography.body_font','assetfont-'+asset.id);rebuildSettings();renderPreview();toast('Font uploaded and applied to body text');}catch(error){toast(error.message);}finally{$('font-file').value='';}};
-  document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
-  document.addEventListener('drop',async event=>{const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;event.preventDefault();event.stopPropagation();for(const file of files){if(/\.(md|markdown|txt)$/i.test(file.name))await openMarkdown(file);else await image(file);}},{capture:true});
+  const dragTypeNames = types => {
+    if (!types) return [];
+    if (typeof types.includes === 'function') return types;
+    const names = [];
+    for (let index = 0; index < types.length; index++) names.push(types[index] ?? types.item?.(index));
+    return names;
+  };
+  const fileDrag = dataTransfer => {
+    const names = dragTypeNames(dataTransfer?.types);
+    const has = name => typeof names.includes === 'function' ? names.includes(name) : false;
+    return has('Files') || has('text/uri-list');
+  };
+  const droppedFiles = dataTransfer => {
+    const files = [...(dataTransfer?.files || [])];
+    if (files.length) return files;
+    return [...(dataTransfer?.items || [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
+  };
+  window.mdpdf.loadDropped = async entries => {
+    for (const entry of entries || []) {
+      try {
+        if (entry.error) { toast(entry.error); continue; }
+        if (typeof entry.text === 'string') await openMarkdown(new File([entry.text], entry.name || 'dropped.md', {type:'text/markdown'}));
+        else if (typeof entry.base64 === 'string') {
+          const binary = atob(entry.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+          await image(new File([bytes], entry.name || 'dropped', {type: entry.mime || 'application/octet-stream'}));
+        }
+      } catch (error) { toast(error.message); }
+    }
+  };
+  if (window.mdpdfPendingDrop) { const pending = window.mdpdfPendingDrop; window.mdpdfPendingDrop = null; window.mdpdf.loadDropped(pending); }
+  const acceptFileDrag = event => {
+    if (!fileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  document.addEventListener('dragenter', acceptFileDrag, true);
+  document.addEventListener('dragover', acceptFileDrag, true);
+  document.addEventListener('drop', async event => {
+    if (!fileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const files = droppedFiles(event.dataTransfer);
+    for (const file of files) {
+      if (/\.(md|markdown|txt)$/i.test(file.name)) await openMarkdown(file);
+      else await image(file);
+    }
+  }, {capture:true});
   $('editor').addEventListener('paste',event=>{const files=[...(event.clipboardData?.files||[])];if(files.length){event.preventDefault();for(const file of files)image(file);}});
   function resizer(id,variable,min,max,invert){const node=$(id);node.onpointerdown=event=>{node.setPointerCapture(event.pointerId);const origin=event.clientX;const initial=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;const move=event=>{$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,initial+(event.clientX-origin)*(invert?-1:1)))+'px');resizePaper();};node.onpointermove=move;node.onpointerup=()=>{node.onpointermove=null;};};node.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const current=parseFloat(getComputedStyle($('workspace')).getPropertyValue(variable))||min;$('workspace').style.setProperty(variable,Math.max(min,Math.min(max,current+(event.key==='ArrowLeft'?-20:20)*(invert?-1:1)))+'px');resizePaper();}};}
   resizer('editor-resizer','--editor-width',260,650,false);resizer('settings-resizer','--settings-width',245,440,true);

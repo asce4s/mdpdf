@@ -29,3 +29,10 @@ for folder in ['vendor/katex', 'vendor/codemirror']:
         path = assets / folder / name
         assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
     print(f'Verified {folder}: {len(entries)} pinned files.')
+pdfjs = Path(__file__).resolve().parents[1] / 'public' / 'pdfjs'
+pdf_manifest = json.loads((pdfjs / 'manifest.json').read_text())
+assert pdf_manifest['version'] == '6.4.299'
+for name, expected in pdf_manifest['files'].items():
+    path = pdfjs / name
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
+print(f'Verified pdfjs: {len(pdf_manifest["files"])} pinned files.')

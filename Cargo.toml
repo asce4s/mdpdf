@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/mdpdf-core", "crates/mdpdf-render", "crates/mdpdf-app", "crates/mdpdf-cli"]
+members = ["crates/mdpdf-core", "crates/mdpdf-render", "crates/mdpdf-app", "crates/mdpdf-cli", "crates/mdpdf-desktop"]
 resolver = "3"
 
 [workspace.package]
