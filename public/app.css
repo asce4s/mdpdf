@@ -53,3 +53,4 @@
 @media(max-width:599px){.asset-list,.comparison-panes{grid-template-columns:1fr}.conflict-banner{align-items:flex-start;flex-wrap:wrap}.tools-dialog{max-height:85dvh}.library-row small{display:block}}
 
 .asset-card label,.library-row details label{display:block;color:var(--muted);font-size:12px;line-height:1.6;margin-top:10px}
+.preview-loading{position:absolute;inset:0;z-index:4;background:#e5e8e1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#727a6b;font-size:12px;gap:12px}.preview-spinner{width:28px;height:28px;border:2.5px solid #c5ccc0;border-top-color:#5d6b52;border-radius:50%;animation:spin 1s linear infinite}

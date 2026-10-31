@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Desktop window for the local mdpdf server. The page does not get extra system commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
