@@ -1,0 +1,22 @@
+import {assetUsage} from './library-data.js';
+function altText(text){return String(text).replace(/\\/g,'\\\\').replace(/([\[\]])/g,'\\$1').replace(/\r?\n/g,' ');}
+export function replaceImageDescription(source,id,description){const pattern=new RegExp('!\\[(?:\\\\.|[^\\]\\\\])*\\](\\(asset:\\/\\/'+id+'(?:\\s+[^)]*)?\\))','g');return source.replace(pattern,(_,destination)=>'!['+altText(description)+']'+destination);}
+export function assetManager(api){const {el,button,dialog,safe,store,put,restoreAsset,replace,editor}=api;
+ return async function show(){await api.save(true);const assets=await store('assets','readonly',s=>s.getAll()),docs=await store('documents','readonly',s=>s.getAll()),usage=assetUsage(assets,docs,{...api.draft(),id:api.activeId()});
+  const d=dialog('Asset manager','asset-manager'),query=el('input','',{placeholder:'Search assets'}),kind=el('select'),unused=el('input','',{type:'checkbox'}),filter=el('label','Unused assets only'),status=el('p',''),list=el('div','',{className:'asset-list'}),urls=[],faces=[];
+  query.setAttribute('aria-label','Search assets');kind.setAttribute('aria-label','Asset type');for(const [value,label] of [['','All assets'],['image','Images'],['font','Fonts']])kind.append(el('option',label,{value}));filter.prepend(unused);status.setAttribute('role','status');status.setAttribute('aria-live','polite');d.append(query,kind,filter,status,list);
+  const previews=new Map();for(const asset of assets){const url=URL.createObjectURL(asset.blob);urls.push(url);if(asset.kind==='image')previews.set(asset.id,el('img','',{src:url,alt:asset.description||asset.displayName||asset.name,loading:'lazy'}));else{const sample=el('p','The quick brown fox · 0123456789',{className:'asset-font-sample'});previews.set(asset.id,sample);const face=new FontFace('asset-preview-'+asset.id,`url(${url})`);face.load().then(()=>{if(d.open){document.fonts.add(face);faces.push(face);sample.style.fontFamily='asset-preview-'+asset.id;}}).catch(()=>{sample.textContent='Font preview unavailable';});}}
+  function render(){list.replaceChildren();const term=query.value.toLocaleLowerCase(),items=assets.filter(a=>(!kind.value||a.kind===kind.value)&&(!unused.checked||!usage.get(a.id).length)&&[a.displayName||a.name,a.description||''].join(' ').toLocaleLowerCase().includes(term));status.textContent=`${items.length} asset${items.length===1?'':'s'}`;
+    if(!items.length)list.append(el('p','No matching assets. Upload an image or font to get started.'));
+    for(const a of items){const row=el('section','',{className:'asset-card'}),title=el('h3',a.displayName||a.name),name=el('input','',{value:a.displayName||a.name});row.setAttribute('aria-label',a.displayName||a.name);name.setAttribute('aria-label','Asset name');const nameLabel=el('label','Asset name');nameLabel.append(name);row.append(title,previews.get(a.id),el('p',usage.get(a.id).length?'Used by: '+usage.get(a.id).map(d=>d.name).join(', '):'Unused by saved documents, history, and the current draft.'),nameLabel);
+      const description=el('input','',{value:a.description||''});if(a.kind==='image'){description.setAttribute('aria-label','Image description');const label=el('label','Image description');label.append(description);row.append(label);}
+      row.append(button('Save asset details',safe(async()=>{a.displayName=name.value.trim().slice(0,180)||a.name;if(a.kind==='image')a.description=description.value.trim().slice(0,1000);await put('assets',a);title.textContent=a.displayName;row.setAttribute('aria-label',a.displayName);if(a.kind==='image')previews.get(a.id).alt=a.description||a.displayName;status.textContent='Asset details saved';})));
+      if(a.kind==='image'){
+        row.append(button('Insert image',safe(async()=>{await restoreAsset(a);const range=editor.state.selection.main;d.close();replace(range.from,range.to,`![${altText(description.value.trim()||name.value.trim()||a.name)}](asset://${a.id})`);})),button('Apply description to this document',()=>{const text=replaceImageDescription(editor.state.doc.toString(),a.id,description.value);d.close();replace(0,editor.state.doc.length,text);}));
+      }else row.append(button('Use for body text',safe(async()=>{await restoreAsset(a);api.useFont(a.id);d.close();})));
+      list.append(row);
+    }
+  }
+  query.oninput=render;kind.onchange=render;unused.onchange=render;render();query.focus();d.addEventListener('close',()=>{urls.forEach(url=>URL.revokeObjectURL(url));faces.forEach(face=>document.fonts.delete(face));});
+ };
+}

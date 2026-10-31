@@ -60,7 +60,7 @@ test('PDF downloads, exact preview, and strict diagram diagnostics work',async({
   await replace(page,'```mermaid\nflowchart TD\n A[Unclosed\n```');
   await expect(page.locator('#diagnostics')).toBeVisible();await expect(page.locator('.cm-lintRange-error')).toHaveCount(1);
   await page.locator('.advanced-section summary').click();await page.locator('#strict-diagrams').check();
-  const response=page.waitForResponse(r=>r.url().endsWith('/api/export'));await page.locator('#export-pdf').click();expect((await response).status()).toBe(422);
+  const response=page.waitForResponse(r=>r.url().endsWith('/api/export'));await page.locator('#export-pdf').click();await page.getByRole('button',{name:'Export anyway',exact:true}).click();expect((await response).status()).toBe(422);
 });
 
 test('images and fonts upload into the current session and appear in preview',async({page})=>{
@@ -77,6 +77,8 @@ test('images and fonts upload into the current session and appear in preview',as
   await expect.poll(()=>page.evaluate(()=>window['mdpdf'].state.fonts.length)).toBe(2);
   await expect.poll(()=>page.evaluate(()=>window['mdpdf'].state.theme.typography.body_font)).not.toBe(family);
   await expect(page.frameLocator('#live-preview').locator('#mdpdf-custom-fonts')).toHaveCount(1);
+  // Font uploads trigger a preview refresh; finish it before counting theme-only requests.
+  await page.waitForFunction(()=>window['mdpdf'].ready);
   await page.locator('summary').filter({hasText:/^Typography$/}).click();
   let requests=0;page.on('request',r=>{if(r.url().includes('/api/rpc/render_preview'))requests++;});
   await page.locator('[data-theme-path="typography.heading_font"]').selectOption(family);
@@ -133,4 +135,140 @@ test('structural theme controls update locally using the shared WASM renderer',a
   await expect(preview.locator('h1')).toHaveText('Title');
   await expect(preview.locator('.line-numbers')).toHaveCount(0);
   expect(requests).toBe(0);
+});
+
+test('zen reading centers a themed column and restores the workspace',async({page})=>{
+  await ready(page);
+  await page.locator('#read-mode').click();
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','read');
+  for (const chrome of ['.topbar','.workspace-toolbar','.editor-pane','.settings-pane','.preview-toolbar']) await expect(page.locator(chrome)).toBeHidden();
+  const frame=page.frameLocator('#live-preview');
+  await expect(frame.locator('html')).toHaveCSS('background-color','rgb(23, 27, 25)');
+  const placed=await frame.locator('main').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>40&&Math.abs(r.left-(innerWidth-r.right))<2;});
+  expect(placed).toBe(true);
+  await expect(page.locator('#zen-controls')).toBeVisible();
+  await frame.locator('body').press('Escape');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','off');
+  await expect(page.locator('.topbar')).toBeVisible();
+  await expect(page.locator('#read-mode')).toBeFocused();
+  await page.locator('#ui-theme').click();
+  await page.locator('#read-mode').click();
+  await expect(frame.locator('html')).toHaveCSS('background-color','rgb(246, 247, 243)');
+});
+
+for (const width of [390,1512]) test(`zen waits for reading styles before revealing the preview at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:850});
+  await page.addInitScript(()=>{
+    if(window.parent===window) return;
+    window.addEventListener('message',event=>{
+      if(!window['holdRead']||event.data?.type!=='read'||!event.data.enabled) return;
+      event.stopImmediatePropagation();
+      window['releaseRead']=()=>{
+        window['holdRead']=false;
+        window.dispatchEvent(new MessageEvent('message',{data:event.data,source:event.source}));
+      };
+    });
+  });
+  await ready(page);
+  await page.locator('#write-mode').click();
+  const frame=page.frameLocator('#live-preview');
+  for (let cycle=0;cycle<2;cycle++) {
+    // Hold delivery at the iframe boundary to expose the otherwise brief race.
+    await frame.locator('html').evaluate(()=>{window['holdRead']=true;});
+    await page.locator('#zen-read').click();
+    await expect(page.locator('#workspace')).toHaveAttribute('data-zen','read');
+    await expect(page.locator('#live-preview')).toBeHidden();
+    await expect(page.locator('.preview-pane')).toHaveCSS('background-color','rgb(23, 27, 25)');
+    await frame.locator('html').evaluate(()=>window.parent.postMessage({mdpdf:true,type:'read-ready',request:-1},'*'));
+    await expect(page.locator('#live-preview')).toBeHidden();
+    await frame.locator('html').evaluate(()=>window['releaseRead']());
+    await expect(page.locator('#live-preview')).toBeVisible();
+    await expect(frame.locator('html')).toHaveCSS('background-color','rgb(23, 27, 25)');
+    await expect(page.locator('#live-preview')).toBeFocused();
+    await page.locator('#zen-write').click();
+  }
+});
+
+test('zen icon shortcuts work from the editor and preview without changing text',async({page})=>{
+  await ready(page);
+  const original=await page.evaluate(()=>window['mdpdf'].editor.state.doc.toString());
+  await page.locator('#editor .cm-content').click();
+  await page.keyboard.press('Alt+2');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','write');
+  for (const [id,label,shortcut] of [['zen-read','Read','Alt+1'],['zen-write','Write','Alt+2'],['exit-read','Exit zen mode','Escape']]) {
+    const button=page.locator('#'+id);
+    await expect(button).toHaveAccessibleName(label);
+    await expect(button).toHaveAttribute('aria-keyshortcuts',shortcut);
+    await expect(button.locator('svg')).toBeVisible();
+    expect(await button.textContent()).toBe('');
+    expect(await button.getAttribute('title')).toBeTruthy();
+  }
+  await page.keyboard.press('Alt+1');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','read');
+  await expect(page.locator('#live-preview')).toBeFocused();
+  await page.keyboard.press('Alt+2');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','write');
+  await expect(page.locator('#editor .cm-content')).toBeFocused();
+  await page.keyboard.press('Alt+2');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','write');
+  expect(await page.evaluate(()=>window['mdpdf'].editor.state.doc.toString())).toBe(original);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','off');
+  await page.keyboard.press('Alt+1');
+  await expect(page.locator('#live-preview')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','off');
+});
+
+test('zen writing retains selection, edits, scroll positions and autosave',async({page})=>{
+  await ready(page);
+  await replace(page, '# Long document\n\n'+Array.from({length:100},(_,i)=>`Paragraph ${i}. Words to read.\n\n`).join(''));
+  await expect(page.frameLocator('#live-preview').locator('h1')).toHaveText('Long document');
+  // Set independent pane positions without normal scroll sync moving either one.
+  await page.locator('#toggle-sync').click();
+  const before=await page.evaluate(async()=>{const e=window['mdpdf'].editor;e.dispatch({selection:{anchor:40}});e.scrollDOM.scrollTop=400;document.getElementById('preview-scroll').scrollTop=200;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);return {selection:e.state.selection.main.anchor,editor:e.scrollDOM.scrollTop,preview:document.getElementById('preview-scroll').scrollTop};});
+  await page.locator('#write-mode').click();
+  await expect(page.locator('#workspace')).toHaveAttribute('data-zen','write');
+  await expect(page.locator('#editor .cm-content')).toBeFocused();
+  await expect(page.locator('#editor .cm-gutters')).toBeHidden();
+  expect(await page.evaluate(()=>window['mdpdf'].editor.state.selection.main.anchor)).toBe(before.selection);
+  await page.evaluate(()=>{const e=window['mdpdf'].editor;e.dispatch({changes:{from:0,insert:'Zen edit\n\n'}});e.scrollDOM.scrollTop=500;});
+  await page.locator('#zen-read').click();
+  await expect(page.frameLocator('#live-preview').locator('main')).toContainText('Zen edit');
+  await page.frameLocator('#live-preview').locator('main').evaluate(()=>window.scrollTo(0,350));
+  await page.locator('#zen-write').click();
+  await expect.poll(()=>page.evaluate(()=>window['mdpdf'].editor.scrollDOM.scrollTop)).toBe(500);
+  await page.locator('#zen-read').click();
+  await expect.poll(()=>page.frameLocator('#live-preview').locator('main').evaluate(()=>window.scrollY)).toBe(350);
+  await page.locator('#exit-read').click();
+  await expect.poll(()=>page.evaluate(()=>window['mdpdf'].editor.scrollDOM.scrollTop)).toBe(before.editor);
+  await expect.poll(()=>page.locator('#preview-scroll').evaluate(el=>el.scrollTop)).toBe(before.preview);
+  await expect(page.locator('#write-mode')).toBeFocused();
+  await expect.poll(()=>page.evaluate(()=>JSON.parse(sessionStorage.getItem('mdpdf:draft:v1')||'{}').markdown)).toContain('Zen edit');
+});
+
+for (const width of [390,1512]) test(`zen contains wide content at ${width}px and restores PDF mode`,async({page})=>{
+  await page.setViewportSize({width,height:850});
+  await ready(page);
+  if(width<900) await page.locator('[data-pane=preview]').click();
+  await page.evaluate(()=>{const e=window['mdpdf'].editor;e.dispatch({changes:{from:0,to:e.state.doc.length,insert:'# Wide content\n\n| First | Second | Third |\n| --- | --- | --- |\n| '+('longword'.repeat(50))+' | Second | Third |\n\n```js\n'+('veryLongCode'.repeat(100))+'\n```\n\n'+('Scrolling paragraph.\n\n'.repeat(80))}});});
+  await expect(page.frameLocator('#live-preview').locator('table')).toBeVisible();
+  await page.locator('#pdf-mode').click();
+  await page.locator('#read-mode').click();
+  const frame=page.frameLocator('#live-preview');
+  await expect(frame.locator('.mdpdf-read-scroll')).toBeVisible();
+  const fits=await frame.locator('main').evaluate(()=>document.documentElement.scrollWidth<=innerWidth);
+  expect(fits).toBe(true);
+  await expect(frame.locator('.mdpdf-read-scroll')).toHaveCSS('overflow-x','auto');
+  await expect(frame.locator('pre')).toHaveCSS('overflow-x','auto');
+  await frame.locator('main').evaluate(()=>window.scrollTo(0,200));
+  await expect.poll(()=>frame.locator('main').evaluate(()=>window.scrollY)).toBeGreaterThan(0);
+  await page.locator('#zen-write').click();
+  await expect(page.locator('.editor-pane')).toBeVisible();
+  await expect(page.locator('.preview-pane')).toBeHidden();
+  await expect(page.locator('#zen-controls')).toBeInViewport();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pdf-mode')).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('#pdf-preview')).toBeVisible();
+  if(width<900) await expect(page.locator('#workspace')).toHaveAttribute('data-mobile-pane','preview');
 });

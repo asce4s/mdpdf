@@ -1,5 +1,6 @@
 import { EditorView, EditorState, Compartment, basicSetup, markdown, oneDark, setDiagnostics, openSearchPanel } from './vendor/editor.js';
 import { settings } from './settings.js';
+import { workspaceTools as createWorkspaceTools } from './workspace-tools.js';
 const $ = id => document.getElementById(id);
 const DRAFT_KEY = 'mdpdf:draft:v1', THEMES_KEY = 'mdpdf:themes:v1';
 const SAMPLE = `# A better way to share ideas
@@ -55,11 +56,12 @@ function core(action,payload='') {
 }
 function toast(message) { $('toast').textContent = message; $('toast').classList.remove('hidden'); clearTimeout(toast.timer); toast.timer = setTimeout(() => $('toast').classList.add('hidden'),5500); }
 function download(blob,name) { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url),10000); }
-function jsonRead(key,fallback) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } }
+function jsonRead(key,fallback,storage=localStorage) { try { return JSON.parse(storage.getItem(key)) || fallback; } catch { return fallback; } }
 async function errorResponse(response) { const raw = await response.text(); try { const body = JSON.parse(raw); const error = new Error(body.message || 'Request failed'); error.diagnostics = body.diagnostics || []; return error; } catch(error) { if (error.diagnostics) return error; return new Error(raw.slice(0,250) || `Request failed (${response.status})`); } }
 async function mount() {
   if (started || !window.mdpdfCore) return; started = true;
-  const saved = jsonRead(DRAFT_KEY,{});
+  const saved = jsonRead(DRAFT_KEY,jsonRead(DRAFT_KEY,{}),sessionStorage);
+  let workspaceTools;
   let theme;
   try { theme = saved.theme || core('default'); core('compile',{markdown:saved.markdown || '',theme}); } catch { theme = core('default'); }
   const state = { markdown:typeof saved.markdown === 'string' ? saved.markdown : SAMPLE, theme, preset:saved.preset || 'default', fonts:[], mode:'live', dark:saved.dark !== false, guides:saved.guides !== false, sync:true, zoom:saved.zoom || 'fit', html:'', diagnostics:[], cache:new Map(), pageWidth:794, pageHeight:1123, height:1123, scale:1, pdfUrl:null, generation:0, savedThemes:jsonRead(THEMES_KEY,[]), pendingStyle:null };
@@ -68,8 +70,8 @@ async function mount() {
   const fontCss = document.createElement('link'); fontCss.rel = 'stylesheet'; fontCss.href = '/fonts/fonts.css'; document.head.append(fontCss);
   $('filename').value = saved.filename || 'project-brief.md'; $('zoom').value = state.zoom;
   const editorTheme = new Compartment();
-  let typingTimer, saveTimer, pdfTimer, previewController, pdfController, muteEditor = 0, mutePreview = 0;
-  let frameReady = false, hasMath = false, workerId = 0, scrollFrame;
+  let typingTimer, saveTimer, pdfTimer, previewController, pdfController, muteEditor = 0, mutePreview = 0, zenMode = 'off';
+  let frameReady = false, hasMath = false, workerId = 0, scrollFrame, readRequest = 0;
   const coveredCharacters = new Set(), workerRequests = new Map();
   let previewWorker;
   try {
@@ -95,31 +97,45 @@ async function mount() {
       previewWorker.postMessage({id,payload:JSON.stringify({markdown,theme})});
     });
   }
-  const editor = new EditorView({ parent:$('editor'), state:EditorState.create({doc:state.markdown,extensions:[basicSetup,markdown(),EditorView.lineWrapping,editorTheme.of(state.dark ? oneDark : []),EditorView.contentAttributes.of({'aria-label':'Markdown source','spellcheck':'false'}),EditorView.updateListener.of(update => {
+  const editorExtensions = () => [basicSetup,markdown(),EditorView.lineWrapping,editorTheme.of(state.dark ? oneDark : []),EditorView.contentAttributes.of({'aria-label':'Markdown source'}),EditorView.updateListener.of(update => {
     if (update.docChanged) { state.markdown = update.state.doc.toString(); stats(); schedulePreview(); scheduleSave(); }
     if (update.selectionSet || update.viewportChanged) {
       $('cursor-line').textContent = String(update.state.doc.lineAt(update.state.selection.main.head).number);
     }
-  })]}) });
+  })];
+  const editor = new EditorView({parent:$('editor'),state:EditorState.create({doc:state.markdown,extensions:editorExtensions()})});
   window.mdpdf.editor = editor;
   function post(message) { $('live-preview').contentWindow?.postMessage({mdpdf:true,...message},'*'); }
+  function updateReadingView() {
+    const enabled = zenMode === 'read';
+    // The iframe must apply its screen styles before we expose its canvas.
+    $('live-preview').classList.toggle('read-pending',enabled);
+    post({type:'read',enabled,dark:state.dark,request:++readRequest});
+  }
   editor.scrollDOM.addEventListener('scroll',() => {
-    if (!state.sync || state.mode !== 'live' || performance.now() <= muteEditor) return;
+    if (zenMode !== 'off' || !state.sync || state.mode !== 'live' || performance.now() <= muteEditor) return;
     cancelAnimationFrame(scrollFrame);
     scrollFrame = requestAnimationFrame(() => {
-      if (performance.now() <= muteEditor) return;
+      if (zenMode !== 'off' || performance.now() <= muteEditor) return;
       const block = editor.lineBlockAtHeight(editor.scrollDOM.scrollTop);
       post({type:'scroll-line',line:editor.state.doc.lineAt(block.from).number});
     });
   },{passive:true});
   function stats() { const words = state.markdown.trim().split(/\s+/).filter(Boolean).length; $('document-stats').textContent = `${words} words  ·  ${editor.state.doc.lines} lines`; }
+  function persistDraft() {
+    const value=JSON.stringify({markdown:state.markdown,theme:state.theme,preset:state.preset,filename:$('filename').value,dark:state.dark,guides:state.guides,zoom:state.zoom});
+    try { sessionStorage.setItem(DRAFT_KEY,value);if(!workspaceTools)localStorage.setItem(DRAFT_KEY,value); }
+    catch { $('save-state').textContent='Recovery storage unavailable'; }
+  }
   function save() {
-    try { localStorage.setItem(DRAFT_KEY,JSON.stringify({markdown:state.markdown,theme:state.theme,preset:state.preset,filename:$('filename').value,dark:state.dark,guides:state.guides,zoom:state.zoom})); $('save-state').textContent = '✓ Saved locally'; }
-    catch { $('save-state').textContent = 'Storage unavailable'; }
+    persistDraft();
+    if(workspaceTools)workspaceTools.save().then(result=>{$('save-state').textContent=result?.stale?'Changed in another tab':'✓ Saved locally';}).catch(error=>{$('save-state').textContent=error.name==='DocumentConflict'?'Review changes in another tab':'Could not save';});
+    else $('save-state').textContent='✓ Saved locally';
   }
   function scheduleSave() { $('save-state').textContent = 'Saving…'; clearTimeout(saveTimer); saveTimer = setTimeout(save,2000); }
   function status(text,busy=false) { $('render-status').textContent = text; $('render-status').classList.toggle('spinner',busy); }
   function diagnostics(items) {
+    items=[...items.filter(item=>item.source!=='assistance'),...(state.assistDiagnostics||[])];
     state.diagnostics = items;
     const panel = $('diagnostics'); panel.replaceChildren(); panel.classList.toggle('hidden',items.length === 0);
     const markers = [];
@@ -132,10 +148,16 @@ async function mount() {
     editor.dispatch(setDiagnostics(editor.state,markers));
   }
   function resizePaper() {
+    if (zenMode === 'write') return;
     const viewport = $('preview-scroll');
+    const frame = $('live-preview'), stage = $('paper-stage');
+    if (zenMode === 'read') {
+      frame.style.width = '100%'; frame.style.height = '100%'; frame.style.transform = 'none';
+      stage.style.width = '100%'; stage.style.height = '100%'; stage.style.minHeight = '0';
+      return;
+    }
     const scale = state.zoom === 'fit' ? Math.min(1.4,Math.max(.2,(viewport.clientWidth - (window.innerWidth < 900 ? 28:50))/state.pageWidth)) : Number(state.zoom);
     state.scale = scale;
-    const frame = $('live-preview'), stage = $('paper-stage');
     frame.style.width = `${state.pageWidth}px`; frame.style.height = `${Math.max(state.height,state.pageHeight)}px`; frame.style.transform = `scale(${scale})`;
     stage.style.width = `${state.pageWidth * scale}px`; stage.style.minHeight = '0'; stage.style.height = `${Math.max(state.height,state.pageHeight)*scale}px`;
   }
@@ -218,14 +240,24 @@ async function mount() {
       const nonce = result.html.match(/nonce="([^"]+)"/)?.[1];
       const cache = JSON.stringify([...state.cache]).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026');
       const html = nonce ? result.html.replace('</head>',`<script nonce="${nonce}" id="mdpdf-cached-svgs" type="application/json">${cache}</script></head>`) : result.html;
+      if (zenMode === 'read') { ++readRequest; $('live-preview').classList.add('read-pending'); }
       $('live-preview').srcdoc = html;
       compileTheme();
     } catch(error) { if (error.name !== 'AbortError') { status('Preview needs attention'); toast(error.message); } }
   }
-  $('live-preview').addEventListener('load',() => { if (state.pendingStyle) post({type:'style',...state.pendingStyle,revision:state.revision}); post({type:'guides',enabled:state.guides}); });
+  $('live-preview').addEventListener('load',() => { if (state.pendingStyle) post({type:'style',...state.pendingStyle,revision:state.revision}); post({type:'guides',enabled:state.guides}); if (zenMode === 'read') updateReadingView(); });
   window.addEventListener('message',event => {
     if (event.source !== $('live-preview').contentWindow || !event.data?.mdpdf) return;
     const message = event.data;
+    workspaceTools?.onMessage(message);
+    if(message.type==='find-position'&&zenMode==='off')$('preview-scroll').scrollTop=Math.max(0,message.y*state.scale);
+    if (message.type === 'read-ready' && zenMode === 'read' && message.request === readRequest) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (zenMode !== 'read' || message.request !== readRequest) return;
+        $('live-preview').classList.remove('read-pending');
+        $('live-preview').focus({preventScroll:true});
+      }));
+    }
     if (message.type === 'content' && message.revision === state.revision) {
       $('preview-empty').classList.add('hidden');
       window.mdpdf.lastContentMs ??= performance.now() - (state.requestStarted || performance.now());
@@ -243,11 +275,15 @@ async function mount() {
       window.mdpdf.ready = true; window.mdpdf.lastRenderMs = performance.now() - (state.requestStarted || performance.now());
     }
     if (message.type === 'bridge-error') toast(message.message);
-    if (message.type === 'scroll-position' && state.sync) { mutePreview = performance.now()+250; $('preview-scroll').scrollTop = Math.max(0,message.y*state.scale-35); }
-    if (message.type === 'editor-line' && state.sync) { muteEditor = performance.now()+250; const line = editor.state.doc.line(Math.min(Math.max(message.line,1),editor.state.doc.lines)); editor.dispatch({effects:EditorView.scrollIntoView(line.from,{y:'start'})}); }
+    if (message.type === 'exit-read') zen('off');
+    if (message.type === 'tools-command' && message.command === 'palette') workspaceTools?.palette();
+    if (message.type === 'read-suspended') zenReadExit?.();
+    if (message.type === 'zen-mode' && zenMode === 'read' && ['read','write'].includes(message.mode)) zen(message.mode);
+    if (message.type === 'scroll-position' && state.sync && zenMode === 'off') { mutePreview = performance.now()+250; $('preview-scroll').scrollTop = Math.max(0,message.y*state.scale-35); }
+    if (message.type === 'editor-line' && state.sync && zenMode === 'off') { muteEditor = performance.now()+250; const line = editor.state.doc.line(Math.min(Math.max(message.line,1),editor.state.doc.lines)); editor.dispatch({effects:EditorView.scrollIntoView(line.from,{y:'start'})}); }
   });
   let previewScrollFrame;
-  $('preview-scroll').addEventListener('scroll',() => { if (state.sync && state.mode === 'live' && performance.now() > mutePreview) { cancelAnimationFrame(previewScrollFrame); previewScrollFrame=requestAnimationFrame(()=>{if(performance.now()<=mutePreview)return;muteEditor=performance.now()+100;post({type:'position-line',y:$('preview-scroll').scrollTop/state.scale});}); } },{passive:true});
+  $('preview-scroll').addEventListener('scroll',() => { if (zenMode !== 'off' || !state.sync || state.mode !== 'live' || performance.now() <= mutePreview) return; cancelAnimationFrame(previewScrollFrame); previewScrollFrame=requestAnimationFrame(()=>{if(zenMode !== 'off' || performance.now()<=mutePreview)return;muteEditor=performance.now()+100;post({type:'position-line',y:$('preview-scroll').scrollTop/state.scale});}); },{passive:true});
   function presets() {
     const select = $('preset');
     for (const node of select.querySelectorAll('[data-custom]')) node.remove();
@@ -287,8 +323,11 @@ async function mount() {
   $('import-theme').onclick=()=>$('theme-file').click();
   $('theme-file').onchange=async()=>{const file=$('theme-file').files[0];if(!file)return;try{if(file.size>50*1024)throw new Error('Theme exceeds 50 KB');state.theme=core('import',await file.text());state.preset='default';presets();rebuildSettings();compileTheme(true);scheduleSave();toast('Theme imported');}catch(error){toast(error.message);}finally{$('theme-file').value='';}};
   const filename = extension => ($('filename').value || 'document.md').replace(/\.(md|markdown|pdf)$/i,'')+'.'+extension;
-  async function exactPdf(asDownload) {
-    if (asDownload) $('export-pdf').disabled=true;
+  async function exactPdf(asDownload,skipCheck=false) {
+    if (asDownload) {
+      $('export-pdf').disabled=true;
+      if(!skipCheck&&workspaceTools){status('Checking export',true);if(!await workspaceTools.preflight()){$('export-pdf').disabled=false;status('Export check complete');return;}}
+    }
     else { pdfController?.abort();pdfController=new AbortController();$('refresh-pdf').classList.add('spinner'); }
     const start=performance.now();status('Rendering PDF',true);
     try {
@@ -304,6 +343,70 @@ async function mount() {
   $('export-pdf').onclick=()=>exactPdf(true);$('refresh-pdf').onclick=()=>exactPdf(false);
   function mode(value){state.mode=value;$('live-mode').classList.toggle('selected',value==='live');$('pdf-mode').classList.toggle('selected',value==='pdf');$('live-mode').setAttribute('aria-selected',String(value==='live'));$('pdf-mode').setAttribute('aria-selected',String(value==='pdf'));$('paper-stage').classList.toggle('hidden',value==='pdf');$('pdf-preview').classList.toggle('hidden',value!=='pdf');$('refresh-pdf').classList.toggle('hidden',value!=='pdf');if(value==='pdf')exactPdf(false);else resizePaper();}
   $('live-mode').onclick=()=>mode('live');$('pdf-mode').onclick=()=>mode('pdf');
+  let zenSnapshot, zenWriteScroll = 0, zenEpoch = 0, zenReadExit, zenTransition = false;
+  async function zen(value, entry) {
+    if (zenMode === value || zenTransition) return;
+    const previous = zenMode;
+    if (previous === 'read') {
+      // Capture the iframe position before hiding or resizing its viewport.
+      zenTransition = true;
+      await new Promise(resolve => {
+        zenReadExit = resolve;
+        post({type:'suspend-read'});
+        setTimeout(resolve,500);
+      });
+      zenReadExit = null;
+      zenTransition = false;
+    }
+    if (previous === 'off') {
+      zenSnapshot = {entry, editorScroll:editor.scrollDOM.scrollTop, previewScroll:$('preview-scroll').scrollTop};
+      zenWriteScroll = zenSnapshot.editorScroll;
+      $('document-actions').classList.add('hidden');
+    } else if (previous === 'write') zenWriteScroll = editor.scrollDOM.scrollTop;
+    zenMode = value;
+    const epoch = ++zenEpoch;
+    muteEditor = mutePreview = performance.now()+500;
+    $('workspace').dataset.zen = value;
+    $('zen-read').setAttribute('aria-pressed',String(value === 'read'));
+    $('zen-write').setAttribute('aria-pressed',String(value === 'write'));
+    updateReadingView();
+    resizePaper();
+    editor.requestMeasure();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (epoch !== zenEpoch) return;
+      if (value === 'off') {
+        editor.requestMeasure({read:()=>zenSnapshot.editorScroll,write:top=>{editor.scrollDOM.scrollTop=top;}});
+        $('preview-scroll').scrollTop = zenSnapshot.previewScroll;
+        zenSnapshot.entry?.focus({preventScroll:true});
+        post({type:'guides',enabled:state.guides});
+      } else if (value === 'write') {
+        editor.focus();
+        editor.scrollDOM.scrollTop = zenWriteScroll;
+      }
+    }));
+  }
+  $('read-mode').onclick=()=>zen('read',$('read-mode'));
+  $('write-mode').onclick=()=>zen('write',$('write-mode'));
+  $('zen-read').onclick=()=>zen('read');
+  $('zen-write').onclick=()=>zen('write');
+  $('exit-read').onclick=()=>zen('off');
+  $('zen-find').onclick=()=>workspaceTools?.onMessage({type:'tools-command',command:'find'});
+  for (const [id,label,key] of [['read-mode','Zen reading mode','1'],['write-mode','Zen writing mode','2']]) {
+    $(id).title = `${label} (Alt+${key})`;
+    $(id).setAttribute('aria-keyshortcuts',`Alt+${key}`);
+  }
+  document.addEventListener('keydown',event=>{
+    if (event.isComposing) return;
+    let target;
+    if(event.key==='Escape'&&zenMode !== 'off'&&!document.querySelector('dialog[open]')) target='off';
+    else if(event.altKey&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey) {
+      if(event.code==='Digit1') target='read';
+      if(event.code==='Digit2') target='write';
+    }
+    if(!target) return;
+    event.preventDefault(); event.stopPropagation();
+    if(!event.repeat) zen(target,document.activeElement);
+  },true);
   $('zoom').onchange=()=>{state.zoom=$('zoom').value;resizePaper();scheduleSave();};
   const zoomStep=delta=>{const next=Math.max(.5,Math.min(2,Math.round((state.scale+delta)*100)/100));state.zoom=String(next);let option=[...$('zoom').options].find(o=>o.value===state.zoom);if(!option){option=new Option(`${Math.round(next*100)}%`,state.zoom);$('zoom').add(option);}$('zoom').value=state.zoom;resizePaper();scheduleSave();};
   $('zoom-in').onclick=()=>zoomStep(.1);$('zoom-out').onclick=()=>zoomStep(-.1);
@@ -321,11 +424,11 @@ async function mount() {
   $('download-md').onclick=()=>{download(new Blob([state.markdown],{type:'text/markdown'}),filename('md'));$('document-actions').classList.add('hidden');};
   $('download-html').onclick=async()=>{try{const response=await fetch('/api/rpc/render_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({markdown:state.markdown,theme:state.theme})});if(!response.ok)throw await errorResponse(response);const result=await response.json();download(new Blob([result.html],{type:'text/html'}),filename('html'));}catch(error){toast(error.message);}$('document-actions').classList.add('hidden');};
   let fileGeneration=0;
-  async function openMarkdown(file){if(file.size>2*1024*1024){toast('Markdown exceeds 2 MB');return;}const current=++fileGeneration;const text=await file.text();if(current!==fileGeneration)return;replaceDocument(text);$('filename').value=file.name;scheduleSave();await renderPreview();}
+  async function openMarkdown(file){if(file.size>2*1024*1024){toast('Markdown exceeds 2 MB');return;}const current=++fileGeneration;const text=await file.text();if(current!==fileGeneration)return;await workspaceTools?.beforeImport();if(current!==fileGeneration)return;replaceDocument(text);$('filename').value=file.name;scheduleSave();await renderPreview();}
   $('open-file').onclick=()=>$('markdown-file').click();$('markdown-file').onchange=async()=>{const file=$('markdown-file').files[0];if(file)await openMarkdown(file);$('markdown-file').value='';};
   function insert(value){const range=editor.state.selection.main;editor.dispatch({changes:{from:range.from,to:range.to,insert:value},selection:{anchor:range.from+value.length}});editor.focus();}
-  $('insert-snippet').onchange=()=>{const key=$('insert-snippet').value;$('insert-snippet').value='';if(key==='image')$('image-file').click();else if(SNIPPETS[key])insert(SNIPPETS[key]);};
-  async function upload(file){const cap=/\.(ttf|otf|woff2)$/i.test(file.name)?5:10;if(file.size>cap*1024*1024)throw new Error(`File exceeds ${cap} MB`);const data=new FormData();data.append('file',file);const response=await fetch('/api/assets',{method:'POST',body:data});if(!response.ok)throw await errorResponse(response);return response.json();}
+  $('insert-snippet').onchange=()=>{const key=$('insert-snippet').value;$('insert-snippet').value='';if(key==='table')workspaceTools?.table();else if(key==='image')$('image-file').click();else if(SNIPPETS[key])insert(SNIPPETS[key]);};
+  async function upload(file){const cap=/\.(ttf|otf|woff2)$/i.test(file.name)?5:10;if(file.size>cap*1024*1024)throw new Error(`File exceeds ${cap} MB`);const data=new FormData();data.append('file',file);const response=await fetch('/api/assets',{method:'POST',body:data});if(!response.ok)throw await errorResponse(response);const asset=await response.json();await workspaceTools?.keepAsset(asset,file);return asset;}
   async function image(file){try{const asset=await upload(file);if(asset.kind!=='image')throw new Error('Choose a PNG, JPEG or WebP image');insert(`![${file.name.replace(/[\[\]]/g,'')}](asset://${asset.id})`);}catch(error){toast(error.message);}}
   $('image-file').onchange=async()=>{const file=$('image-file').files[0];if(file)await image(file);$('image-file').value='';};
   async function registerFont(asset){try{const response=await fetch(asset.url);if(!response.ok)throw new Error();const bytes=await response.arrayBuffer();const face=await new FontFace('assetfont-'+asset.id,bytes).load();document.fonts.add(face);asset.dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(new Blob([bytes],{type:asset.mime}));});}catch{toast(`Could not load font: ${asset.name}`);}}
@@ -337,6 +440,17 @@ async function mount() {
   resizer('editor-resizer','--editor-width',260,650,false);resizer('settings-resizer','--settings-width',245,440,true);
   window.addEventListener('beforeunload',save);
   try{const response=await fetch('/api/assets');if(response.ok){state.fonts=(await response.json()).filter(asset=>asset.kind==='font');await Promise.all(state.fonts.map(registerFont));}}catch{}
+  workspaceTools = await createWorkspaceTools({editor,EditorView,EditorState,toast,
+    core,post,download,persistDraft,useFont:id=>{changeTheme('typography.body_font','assetfont-'+id);rebuildSettings();},exportPdf:()=>exactPdf(true,true),pageWidth:()=>state.pageWidth,
+    assistIssues:items=>{state.assistDiagnostics=items;diagnostics(state.diagnostics);},
+    draft:()=>({markdown:state.markdown,theme:state.theme,preset:state.preset,filename:$('filename').value}),
+    rename:name=>{$('filename').value=name;scheduleSave();},
+    apply:async draft=>{if(zenMode!=='off')await zen('off');state.theme=draft.theme||core('default');state.preset=draft.preset||'default';$('filename').value=draft.filename||'untitled.md';state.markdown=draft.markdown;editor.setState(EditorState.create({doc:state.markdown,extensions:editorExtensions()}));workspaceTools?.observeEditor();if(window.innerWidth<900)document.querySelector('[data-pane=editor]').click();stats();state.cache.clear();presets();rebuildSettings();compileTheme(true);scheduleSave();await renderPreview();},
+    restoreAsset:async asset=>{const restored=await upload(new File([asset.blob],asset.name,{type:asset.mime}));if(restored.kind==='font'){if(!state.fonts.some(font=>font.id===restored.id))state.fonts.push(restored);await registerFont(restored);}},
+    jump:line=>{if(zenMode==='read')post({type:'read-line',line});else {if(window.innerWidth<900&&zenMode==='off')document.querySelector('[data-pane=editor]').click();post({type:'scroll-line',line});}},
+    zen:value=>zen(value,document.activeElement)
+  });
+  $('filename').addEventListener('input',scheduleSave);
   presets();rebuildSettings();stats();resizePaper();save();await renderPreview();
 }
 window.addEventListener('mdpdf-ready',()=>mount().catch(error=>{console.error(error);toast(error.message);}));

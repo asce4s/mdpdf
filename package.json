@@ -6,8 +6,9 @@
   "scripts": {
     "vendor": "node scripts/vendor_editor.mjs",
     "test:e2e": "playwright test",
+    "test:unit": "node --test scripts/markdown-tools.test.mjs scripts/bundle.test.mjs scripts/library-data.test.mjs",
     "dev": "bash scripts/dev.sh",
-    "lint": "node --check public/app.js && node --check public/preview-worker.js && node --check assets/vendor/mermaid/bootstrap.js && node --check assets/vendor/mermaid/frame-bridge.js"
+    "lint": "node --check public/app.js && node --check public/workspace-tools.js && node --check public/document-features.js && node --check public/bundle.js && node --check public/library-data.js && node --check public/asset-manager.js && node --check public/markdown-tools.js && node --check public/preview-worker.js && node --check assets/vendor/mermaid/bootstrap.js && node --check assets/vendor/mermaid/frame-bridge.js"
   },
   "dependencies": {
     "@codemirror/lang-css": "6.3.1",

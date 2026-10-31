@@ -4,6 +4,34 @@ Markdown to tagged PDF, built with Rust, Leptos and Chromium. Write in CodeMirro
 
 ![The mdpdf editor, live preview and settings](docs/screenshot.png)
 
+Choose **Zen** in the editor or preview toolbar for a distraction-free workspace. Switch between **Read** and **Write** using the small controls at the top right; use **Alt+1** for Read, **Alt+2** for Write, and **Escape** or the close icon to return. Zen follows the interface theme, supports desktop and mobile browsers, and keeps your editing and preview positions.
+
+## Writing tools
+
+Use **Commands** or **Ctrl/Cmd+Shift+P** to find editing and export actions, including in zen mode. **Ctrl/Cmd+B**, **I**, and **K** apply bold, italic, and links to the selection. **Outline** navigates headings; **Insert or edit table** opens a grid with row, column, and alignment controls. Paste spreadsheet cells to create a Markdown table, or paste a URL over selected text to create a link.
+
+**Documents** keeps named drafts in this browser, sorted by recent use. Create, rename, switch documents, or inspect **History** and restore an earlier version. Up to 30 restore points are retained per document. Uploaded images and fonts are cached locally and restored to the server when needed. Browser storage is local to the browser profile and site address; download important documents for backup.
+
+Additional commands include:
+
+- **Document templates**: meeting notes, project briefs, technical specifications, proposals, and reports. Templates create a new document and preserve the current draft.
+- **Writing preferences**: spellcheck, editor size, zen column width, typewriter scrolling, optional rich-text paste conversion, and automatic export checks.
+- **Markdown checks**: missing image descriptions and broken heading links. The editor also suggests heading anchors and code-fence languages. A selection toolbar provides common formatting actions.
+- **Diagram workspace**: edit or insert Mermaid diagrams with live previews, examples, and parse errors before applying changes.
+- **Export preflight**: check print layouts for missing images, failed diagrams, and likely clipping. Export runs the check automatically; review issues, jump to source, or export anyway. Strict diagram export rules still apply.
+- **Find in rendered document**: use the command, the reading-mode search icon, or Ctrl/Cmd+F inside reading mode. Reading mode also provides copy-code and enlarge controls.
+- **Export/Import document bundle**: move a ZIP containing Markdown, theme settings, and referenced uploaded images/fonts between browsers. Import creates a new document; it checks the manifest and asset checksums first. Bundles use standard uncompressed ZIP entries; import expects that mdpdf format. Remote image URLs remain remote references.
+
+## Library, assets, and multiple tabs
+
+The document library searches names, Markdown content, folders, and tags. Pin documents to keep them first, use **Organize** to set a folder and comma-separated tags, and filter the list by folder, tag, or pinned status.
+
+**Asset manager**, available from Commands and the document menu, previews uploaded images and fonts. Rename assets for display, save image descriptions, insert existing images, apply descriptions to image references in the current document, or choose a font for body text. The unused filter includes references in saved history and current edits; assets are retained for recovery.
+
+Each tab keeps its own active document and recovery buffer. Saves compare revisions in a single database transaction. If another tab saves conflicting content, an on-screen notice offers a side-by-side review. Load the saved version or keep your draft as a new document; changed local text is also saved as a recovery copy in the library. This protects browser tabs sharing the same site and profile; it is not synchronization between devices.
+
+Dialogs have accessible names and return focus to their opener. The command palette announces its selected result and supports arrow keys, Enter, and Escape. Table controls identify their row/column, outline expansion uses separate keyboard buttons, and tool controls provide visible focus and larger touch targets.
+
 ## Run locally
 
 Install Rust 1.91.1 or newer, Node.js 22+, Chromium and Poppler (for verification). Then:

@@ -10,6 +10,7 @@ export {markdown, markdownLanguage} from '@codemirror/lang-markdown';
 export {css} from '@codemirror/lang-css';
 export {oneDark} from '@codemirror/theme-one-dark';
 export {setDiagnostics} from '@codemirror/lint';
+export {autocompletion} from '@codemirror/autocomplete';
 export {openSearchPanel} from '@codemirror/search';
 `, resolveDir: process.cwd(), sourcefile: 'editor-entry.js' }, outfile: 'assets/vendor/codemirror/editor.js', bundle: true, format: 'esm', minify: true, legalComments: 'eof', target: 'es2022' });
 copyFileSync('assets/vendor/codemirror/editor.js', 'public/vendor/editor.js');

@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {headings,parseTable,tableMarkdown,tsvTable} from '../public/markdown-tools.js';
+test('outline ignores front matter and fenced headings and supports setext',()=>{assert.deepEqual(headings('---\ntitle: test\n---\n# Real\n```md\n# Fake\n```\nOther\n-----').map(h=>[h.text,h.line]),[['Real',4],['Other',8]]);});
+test('tables preserve escaped pipes and inline code and alignment',()=>{const table=parseTable('| A | B |\n| :---: | ---: |\n| a\\|b | `a|b` |');assert.equal(table.rows[1][0],'a\\|b');assert.equal(table.rows[1][1],'`a|b`');assert.deepEqual(table.align,['center','right']);assert.match(tableMarkdown(table.rows,table.align),/:---:/);});
+test('TSV becomes a Markdown table without raw pipe injection',()=>{assert.equal(tsvTable('A\tB\r\none|two\t3'),'| A | B |\n| --- | --- |\n| one\\|two | 3 |');assert.equal(tsvTable('normal text'),null);});
